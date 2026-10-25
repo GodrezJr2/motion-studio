@@ -7,7 +7,8 @@
 //   ms lint <scene> [--json]        sample curves + real playback, print issues (writes .ms/report.json)
 //   ms sheet <scene> [--frames N]   contact sheet PNG: stills + velocity curves + issues (.ms/sheet.png)
 //   ms frame <scene> <t> [--scale]  one still at time t (.ms/frame-<t>.png)
-//   ms render <scene> [--fps 60] [--no-audio]   MP4 from the same timeline, with the scene's sound (.ms/<scene>.mp4)
+//   ms render <scene> [--fps 60] [--no-audio] [--encoder auto|nvenc|qsv|amf|cpu] [--workers 4]   MP4 from the same timeline, with
+//                                   the scene's sound (.ms/<scene>.mp4); GPU encoder first, libx264 as fallback
 //   ms audio <scene>                cue sheet + mixed, loudness-normalised wav only (.ms/<scene>.wav)
 //   ms vo <scene>                   synthesise the voice-over lines; print each line's span and word timings
 //   ms tweens <scene>               the timeline as a table (#index, start, duration, ease, targets, source line)
@@ -127,10 +128,10 @@ async function main() {
     case "render": {
       let last = -1;
       const r = await render(need(scene), {
-        fps: flags.fps && +flags.fps, scale: +(flags.scale || 1), out: flags.out, audio: !flags["no-audio"],
+        fps: flags.fps && +flags.fps, scale: +(flags.scale || 1), out: flags.out, audio: !flags["no-audio"], encoder: flags.encoder, workers: flags.workers && +flags.workers,
         onProgress: (i, n) => { const p = Math.floor(i / n * 10); if (p !== last) { last = p; process.stdout.write(`\rrender ${i}/${n}`); } },
       });
-      console.log(`\r${rel(r.file)}  ${r.frames} frames @ ${r.fps}fps  ${r.width}x${r.height}`);
+      console.log(`\r${rel(r.file)}  ${r.frames} frames @ ${r.fps}fps  ${r.width}x${r.height}  ${r.encoder} x${r.workers}`);
       if (r.audio) printAudio(r.audio);
       break;
     }

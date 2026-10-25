@@ -358,6 +358,7 @@ function loudness(stderr) {
 
 export async function mux(video, wav, out) {
   await ff(["-i", video, "-i", wav, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-    "-shortest", "-movflags", "+faststart", out]);
+    // No -shortest: the wav ends on the last frame's start, so it would cut the final frame or two
+    "-movflags", "+faststart", out]);
   return out;
 }

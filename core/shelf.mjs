@@ -9,6 +9,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { launch } from "./browser.mjs";
 import { outDir } from "./session.mjs";
+import { encoder } from "./gpu.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const SHELF = path.join(ROOT, "refs");
@@ -138,8 +139,9 @@ export async function capture(url, { clip = 0, note = "", width = 1440, height =
 }
 
 function toMp4(webm, mp4, last) {
+  const enc = encoder();
   return new Promise((resolve, reject) => {
-    const p = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-sseof", `-${last + 0.3}`, "-i", webm, "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p",
+    const p = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-sseof", `-${last + 0.3}`, "-i", webm, "-c:v", enc.codec, ...enc.args(20), "-pix_fmt", "yuv420p",
       "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", mp4], { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
     p.stderr.on("data", d => { err += d; });

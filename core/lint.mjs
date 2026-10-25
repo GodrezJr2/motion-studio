@@ -210,6 +210,32 @@ export function lint(sample, tweens = [], gaps = null, { tokens = {}, info = {} 
     const key = Math.round(tw.start * fps);
     starts.set(key, (starts.get(key) || 0) + tw.targets.length);
   }
+  // Two tweens writing the same property of the same element at the same time: GSAP's result then depends on which
+  // one rendered last, so a seek lands differently depending on where the playhead came from. Scrubbing, the
+  // render's parallel workers and lint can all disagree.
+  const writers = new Map();
+  for (const tw of tweens) {
+    if (!(tw.duration > 0) || !tw.els || !tw.writes) continue;
+    tw.els.forEach((el, i) => tw.writes.forEach(w => {
+      const k = `${el}|${w}`;
+      if (!writers.has(k)) writers.set(k, []);
+      writers.get(k).push({ tw, name: tw.targets[i] });
+    }));
+  }
+  const clash = new Set();
+  for (const [k, list] of writers) {
+    list.sort((a, b) => a.tw.start - b.tw.start);
+    for (let i = 1; i < list.length; i++) {
+      const a = list[i - 1].tw, b = list[i].tw, overlap = a.start + a.duration - b.start;
+      const tag = `${list[i].name}|${k.split("|")[1]}|${a.start}|${b.start}`;
+      if (overlap > 0.5 / fps && !clash.has(tag)) {
+        clash.add(tag);
+        add("warn", "overlap", list[i].name, b.start, a.start + a.duration,
+          `two tweens write ${k.split("|")[1]} at once (${a.id || a.src || "#?"} until ${r2(a.start + a.duration)} s, ${b.id || b.src || "#?"} from ${r2(b.start)} s)`,
+          "Start the second after the first ends, or fold them into one tween: overlapping writes make seeking history-dependent, so scrubbing and parallel renders can differ.");
+      }
+    }
+  }
   for (const [frame, count] of starts) {
     if (count >= 6) add("info", "all-at-once", `${count} elements`, frame / fps, frame / fps,
       `${count} elements start on the same frame`, "Stagger 30-60ms so the eye can follow an order.");

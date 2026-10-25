@@ -68,6 +68,11 @@
     return ease.name || "custom";
   }
 
+  // Stable per-element key, so lint can tell two unnamed circles apart
+  const uids = new WeakMap();
+  let nextUid = 0;
+  const uid = el => { if (!uids.has(el)) uids.set(el, ++nextUid); return uids.get(el); };
+
   // Every tween in the timeline with absolute start time, for lanes and lint
   function tweens(raw) {
     if (!tl) return [];
@@ -91,6 +96,9 @@
           props: Object.keys(vars).filter(k => !skip.has(k)),
           from: !!vars.runBackwards,
           targets: targets.filter(t => t instanceof Element).map(nameOf),
+          // what it writes, per element: attr / css objects spread into their keys
+          els: targets.filter(t => t instanceof Element).map(uid),
+          writes: Object.keys(vars).filter(k => !skip.has(k)).flatMap(k => (k === "attr" || k === "css") && vars[k] && typeof vars[k] === "object" ? Object.keys(vars[k]).map(a => `${k}.${a}`) : [k]),
           _targets: raw ? targets : undefined,
         });
       }
