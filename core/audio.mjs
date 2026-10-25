@@ -144,7 +144,8 @@ function voSpec(id, line) {
   const d = (tokensFor(id).audio || {}).vo || {};
   const provider = line.provider || d.provider || "edge";
   if (!line.text || !String(line.text).trim()) throw new Error(`voice-over line needs text: ${JSON.stringify(line)}`);
-  if (provider === "edge") return { provider, voice: line.voice || d.voice || "id-ID-ArdiNeural", rate: line.rate || d.rate || "+0%", text: line.text };
+  if (provider === "edge") return { provider, voice: line.voice || d.voice || "id-ID-ArdiNeural", rate: line.rate || d.rate || "+0%",
+    pitch: line.pitch || d.pitch || "+0Hz", text: line.text };
   if (provider === "elevenlabs") {
     const e = d.elevenlabs || {};
     return { provider, voice: line.voice || e.voice || "JBFqnCBsd6RMkjVDRZzb", model: line.model || e.model || "eleven_multilingual_v2",
@@ -197,7 +198,7 @@ export async function voTake(id, line) {
     let words;
     if (spec.provider === "edge") {
       const py = process.env.MS_PY || "python";
-      const { out } = await run(py, [path.join(ROOT, "core", "tts_edge.py"), spec.voice, spec.rate, mp3], spec.text)
+      const { out } = await run(py, [path.join(ROOT, "core", "tts_edge.py"), spec.voice, spec.rate, spec.pitch, mp3], spec.text)
         .catch(e => { throw new Error(`voice-over (edge): ${e.message}  (pip install edge-tts, or set MS_PY)`); });
       words = JSON.parse(out).words;
     } else words = await elevenlabs(spec, mp3);
@@ -290,7 +291,8 @@ export async function plan(id, info, tweens) {
     if (next && v.until > next.event) warnings.push(`vo "${v.text.slice(0, 32)}" runs to ${v.until}s, over the next line at ${next.event}s`);
     if (v.until > info.duration) warnings.push(`vo "${v.text.slice(0, 32)}" runs to ${v.until}s, past the end (${info.duration}s)`);
   });
-  return { duration: info.duration, cues, music, vo, warnings, duck: ((tokensFor(id).audio || {}).vo || {}).duck ?? 3 };
+  return { duration: info.duration, cues, music, vo, warnings,
+    duck: ((tokensFor(id).audio || {}).vo || {}).duck ?? 3, voChain: ((tokensFor(id).audio || {}).vo || {}).chain || "" };
 }
 
 const num = v => Number(v).toFixed(3);
@@ -325,7 +327,7 @@ export async function mix(id, p) {
       const n = inputs.filter(x => x === "-i").length;
       inputs.push("-i", v.file);
       const trim = v.trim ? `atrim=start=${num(v.trim)},asetpts=PTS-STARTPTS,` : "";
-      chains.push(`[${n}:a]${trim}${fmt},volume=${v.gain}dB,adelay=${Math.round(v.start * 1000)}:all=1[v${k}]`);
+      chains.push(`[${n}:a]${trim}${fmt},${p.voChain ? p.voChain + "," : ""}volume=${v.gain}dB,adelay=${Math.round(v.start * 1000)}:all=1[v${k}]`);
     });
     const vl = vo.map((_, k) => `[v${k}]`).join("");
     chains.push(vo.length > 1 ? `${vl}amix=inputs=${vo.length}:normalize=0:duration=longest[vo]` : `${vl}anull[vo]`);

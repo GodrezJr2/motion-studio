@@ -1,6 +1,6 @@
 """Free draft voice-over via edge-tts (Microsoft Edge read-aloud voices).
 
-usage: python tts_edge.py <voice> <rate> <out.mp3>   (text on stdin)
+usage: python tts_edge.py <voice> <rate> <pitch> <out.mp3>   (text on stdin)
 Prints JSON: {"words": [{"w": "Satu", "t": 0.1, "d": 0.3}, ...]} with times in seconds from the file start.
 """
 import asyncio
@@ -10,9 +10,9 @@ import sys
 import edge_tts
 
 
-async def main(voice, rate, out):
+async def main(voice, rate, pitch, out):
     text = sys.stdin.read().strip()
-    com = edge_tts.Communicate(text, voice, rate=rate, boundary="WordBoundary")
+    com = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, boundary="WordBoundary")
     words = []
     with open(out, "wb") as f:
         async for chunk in com.stream():
@@ -26,4 +26,4 @@ async def main(voice, rate, out):
 
 if __name__ == "__main__":
     sys.stdin.reconfigure(encoding="utf-8")
-    asyncio.run(main(*sys.argv[1:4]))
+    asyncio.run(main(*sys.argv[1:5]))
