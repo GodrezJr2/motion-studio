@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Motion Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/studio/studio.css">
+</head>
+<body>
+  <header class="top">
+    <a class="mark" href="#" title="All projects">Motion <em>Studio</em></a>
+    <div class="crumb"><span id="scene-title">—</span><span id="scene-meta" class="mute"></span></div>
+    <div class="status">
+      <span id="lint-state" class="mute"></span>
+      <span id="score" class="score" title="Lint score">—</span>
+      <span id="live" class="live" title="Live reload"></span>
+    </div>
+  </header>
+
+  <aside class="left">
+    <h2><a class="back" href="#">← Projects</a> <button class="add" id="new-scene" title="New project">+ New</button></h2>
+    <ol id="scene-list" class="scenes"></ol>
+    <h2>Tracked <small id="tracked-count"></small></h2>
+    <ul id="tracked" class="tracked"></ul>
+  </aside>
+
+  <section class="well" id="well">
+    <div class="stage" id="stage">
+      <iframe id="frame" title="Scene"></iframe>
+      <div class="pins" id="pins"></div>
+      <i class="crop tl"></i><i class="crop tr"></i><i class="crop bl"></i><i class="crop br"></i>
+    </div>
+    <form class="pop" id="pop" hidden>
+      <div class="pop-head"><span id="pop-at"></span><kbd>Enter</kbd> save · <kbd>Esc</kbd> cancel</div>
+      <textarea id="pop-text" rows="3" placeholder="What should change at this moment?"></textarea>
+    </form>
+    <div class="hint" id="pin-hint" hidden>Click the frame to pin a note at <b id="pin-at"></b></div>
+  </section>
+
+  <aside class="right">
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="notes" aria-selected="true">Notes <small id="notes-count"></small></button>
+      <button role="tab" data-tab="lint" aria-selected="false">Lint <small id="issues-count"></small></button>
+      <button role="tab" data-tab="files" aria-selected="false">Files <small id="files-count"></small></button>
+      <button role="tab" data-tab="sounds" aria-selected="false">Sounds</button>
+    </div>
+    <div class="panel" id="panel-notes">
+      <button class="btn wide" id="add-note"><span>+</span> Pin a note <kbd>N</kbd></button>
+      <ol class="notes" id="notes"></ol>
+    </div>
+    <div class="panel" id="panel-lint" hidden>
+      <div class="lint-head">
+        <div><div class="big" id="lint-score">—</div><div class="mute" id="lint-perf"></div></div>
+        <button class="btn" id="run-lint">Run lint</button>
+      </div>
+      <ol class="issues" id="issues"></ol>
+    </div>
+    <div class="panel" id="panel-files" hidden>
+      <div class="file-acts">
+        <button class="btn" id="upload">Upload</button>
+        <button class="btn" id="render">Render MP4</button>
+        <input type="file" id="upload-input" multiple hidden>
+      </div>
+      <p class="drop mute" id="drop">Drop music, logos or footage here. They land in the scene folder; tell the AI how to use them in a note.</p>
+      <div id="files"></div>
+    </div>
+    <div class="panel" id="panel-sounds" hidden>
+      <p class="mute kit-note" id="kit-note">Loading kit…</p>
+      <ol class="roles" id="roles"></ol>
+    </div>
+  </aside>
+
+  <div class="insp" id="insp" hidden>
+    <form id="insp-form">
+      <b id="insp-what"></b>
+      <span class="mute" id="insp-src"></span>
+      <div class="insp-row">
+        <label>Start <input id="insp-at" type="number" step="0.01" min="0"></label>
+        <label>Duration <input id="insp-dur" type="number" step="0.01" min="0"></label>
+      </div>
+      <div class="insp-row">
+        <label>Ease <select id="insp-ease"></select></label>
+        <label>Stagger <input id="insp-stagger" type="number" step="0.01" min="0" placeholder="—"></label>
+      </div>
+      <p class="err" id="insp-msg"></p>
+      <div class="insp-acts"><button class="btn" type="button" id="insp-cancel">Cancel</button><button class="btn primary" type="submit">Apply</button></div>
+    </form>
+  </div>
+
+  <footer class="timeline">
+    <div class="transport">
+      <button class="icon" id="to-start" title="Start (Home)"><svg viewBox="0 0 16 16"><path d="M3 3v10M13 3 6 8l7 5z"/></svg></button>
+      <button class="icon" id="step-back" title="Previous frame (←)"><svg viewBox="0 0 16 16"><path d="M11 3 5 8l6 5z"/></svg></button>
+      <button class="icon play" id="play" title="Play / pause (Space)"><svg viewBox="0 0 16 16"><path class="p" d="M4 2.5v11L13 8z"/><path class="s" d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+      <button class="icon" id="step-fwd" title="Next frame (→)"><svg viewBox="0 0 16 16"><path d="m5 3 6 5-6 5z"/></svg></button>
+      <div class="tc"><b id="tc">00:00</b><span class="mute"> / <span id="tc-end">00:00</span></span><span class="sec mute" id="tc-sec">0.000s</span></div>
+      <div class="seg" id="rates" role="group" aria-label="Speed">
+        <button data-rate="0.1">0.1×</button><button data-rate="0.25">¼×</button><button data-rate="0.5">½×</button><button data-rate="1" aria-pressed="true">1×</button>
+      </div>
+      <button class="toggle" id="loop" aria-pressed="true" title="Loop (L)">Loop</button>
+      <button class="toggle" id="sound" aria-pressed="true" title="Sound (M)">Sound</button>
+      <button class="toggle" id="onion" aria-pressed="false" title="Show issue regions on stage (I)">Issues on stage</button>
+    </div>
+    <div class="tracks" id="tracks">
+      <div class="labels" id="labels"></div>
+      <div class="lanes-wrap" id="lanes-wrap">
+        <div class="ruler" id="ruler"></div>
+        <div class="lanes" id="lanes"></div>
+        <div class="playhead" id="playhead"><i></i></div>
+      </div>
+    </div>
+  </footer>
+
+  <main class="home" id="home" hidden>
+    <header class="home-top">
+      <a class="mark" href="#">Motion <em>Studio</em></a>
+      <span class="live" id="home-live" title="Live reload"></span>
+    </header>
+    <section class="home-head">
+      <h1>Projects <small id="proj-count"></small></h1>
+      <div class="home-acts">
+        <input type="search" id="proj-q" placeholder="Filter projects" autocomplete="off" aria-label="Filter projects">
+        <button class="btn primary" id="new-project">+ New project</button>
+      </div>
+    </section>
+    <form class="new-project" id="new-form" hidden>
+      <label class="wide">Describe it, and the AI builds it <textarea name="prompt" rows="3" placeholder="15s vertical ad for Kopi Senja's new oat latte: warm, slow pour, price Rp 28k, ends on the logo"></textarea></label>
+      <p class="wide mute or">It writes the brief, builds the timeline, lints it, has a separate critic judge it, fixes, adds sound and renders. Leave it empty for a blank scene.</p>
+      <label>Title <input name="title" placeholder="Spring launch, 15s" autocomplete="off"></label>
+      <label>Id <input name="id" placeholder="spring-launch" pattern="[a-z0-9][a-z0-9-]*" autocomplete="off"></label>
+      <fieldset class="formats"><legend>Format</legend>
+        <label><input type="radio" name="format" value="16:9" checked><i style="aspect-ratio:16/9"></i>16:9</label>
+        <label><input type="radio" name="format" value="9:16"><i style="aspect-ratio:9/16"></i>9:16</label>
+        <label><input type="radio" name="format" value="1:1"><i style="aspect-ratio:1"></i>1:1</label>
+        <label><input type="radio" name="format" value="4:5"><i style="aspect-ratio:4/5"></i>4:5</label>
+        <label><input type="radio" name="format" value="web"><i class="web"></i>Web</label>
+      </fieldset>
+      <label>Kind <select name="kind"><option value="">auto</option><option>ad</option><option>film</option><option>web</option></select></label>
+      <div class="new-acts"><button class="btn primary" id="new-go">Create</button><button type="button" class="btn" id="new-cancel">Cancel</button><small class="err" id="new-err"></small></div>
+    </form>
+    <ol class="projects" id="projects"></ol>
+    <p class="mute empty" id="proj-empty" hidden>No projects match.</p>
+  </main>
+
+  <dialog class="viewer" id="viewer">
+    <header><b id="viewer-name"></b><a id="viewer-open" target="_blank" rel="noopener">Open</a><a id="viewer-dl" download>Download</a><button id="viewer-close" title="Close (Esc)">×</button></header>
+    <div id="viewer-body"></div>
+  </dialog>
+  <audio id="snd" preload="auto"></audio>
+
+  <script src="/vendor/gsap/gsap.min.js"></script>
+  <script src="/studio/studio.js"></script>
+</body>
+</html>

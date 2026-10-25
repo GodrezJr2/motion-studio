@@ -1,0 +1,167 @@
+# Motion Studio — agent guide
+
+Jay pins notes on moments of a motion scene in the studio. You edit the scene until the motion is right, check it
+with your own eyes (lint + contact sheet), and answer each note. Motion must be high detail and buttery: every move
+eases to rest, nothing teleports or stops dead, playback holds 60 fps.
+
+## Taste first
+
+Read `MOTION.md` before writing any frame. Its YAML front matter is machine-read: lint enforces `limits`, the critic
+gets `banned` and `critic`, and every scene gets the `eases` as GSAP eases `"ms.out"`, `"ms.rest"`, `"ms.land"`, ...
+(use these, not power3/expo). A scene may override any key in its own `scenes/<id>/MOTION.md` (a brand's motion
+language). Put the brief in `scenes/<id>/brief.md`: kind, audience, feel, the one idea; the critic judges against it.
+
+## Scene format
+
+`scenes/<id>/index.html` loads `/vendor/gsap/gsap.min.js`, `/vendor/gsap/CustomEase.min.js`, `tokens.js` (served
+virtually from MOTION.md), `/core/runtime.js`, then the scene script, which builds **one** GSAP timeline and calls
+`MS.register(tl, { width, height, fps, kind })`. `kind` is `"web"` (plays then rests), `"film"` or `"ad"` (end-hold
+and beat rules apply). Rules:
+
+- All motion lives on that timeline (no free-running rAF loops, CSS animations or timers): the studio scrubs it,
+  lint samples it, render seeks it frame by frame. Anything off the timeline will not show up or will flicker.
+- Mark the elements that matter with `data-ms="name"`. Lint, curves and stage highlights use these names.
+  Without any `data-ms`, every tween target is tracked under a generated name.
+- Animate `x`, `y`, `scale`, `rotation`, `opacity`/`autoAlpha`, `clipPath`, SVG attributes. Not layout props.
+- Fonts: wait-free (`display=block` or local), otherwise the first frames render in a fallback font.
+- Add `id` to a tween (`{ id: "dot-travel" }`) when a note is likely to point at it; it shows in `ms tweens`.
+
+## The loop
+
+```
+node bin/ms.mjs notes <scene>                 # open notes: time, point (x%,y% of the frame), text
+node bin/ms.mjs frame <scene> <t>             # still at the note's moment; Read the PNG to see what Jay saw
+node bin/ms.mjs tweens <scene>                # timeline table: which tween is active at that time
+# edit scenes/<scene>/scene.js
+node bin/ms.mjs lint <scene> --no-perf        # fast: curve + tween rules
+node bin/ms.mjs sheet <scene>                 # stills + velocity curves + issues in one PNG; Read it
+node bin/ms.mjs reply <scene> <note-id> "what changed and why" --resolve
+```
+
+The studio (`node bin/ms.mjs serve`, http://127.0.0.1:4173) reloads the scene on every save, keeps the playhead
+where Jay left it, re-lints, and shows your replies under his notes. For Jay's phone over Tailscale:
+`node bin/ms.mjs serve --host 100.95.196.121`.
+
+Retiming is a structured edit, not hand surgery: the runtime records where each tween was written (`ms tweens`
+shows `#index` and `scene.js:line:col`), and `ms edit` rewrites only that call.
+
+```
+node bin/ms.mjs edit <scene> dot-sweep --dur 0.6 --ease ms.out   # by id, scene.js:12:4 or #7
+node bin/ms.mjs edit <scene> "#3" --shift -0.1                     # relative positions ("<0.1", "-=0.3") stay relative
+node bin/ms.mjs edit <scene> --after 2.0 --shift 0.3               # push everything from 2.0 s on
+```
+
+Jay can do the same in the studio: double-click a bar for start / duration / ease / stagger.
+
+Reply in one or two sentences: what changed (ease, duration, offset, path) and the lint result. Resolve only when
+the note is addressed; if you disagree or need his eye, reply without `--resolve`.
+
+## Reading lint
+
+| rule | means | usual fix |
+|---|---|---|
+| teleport | moved in one frame | give it a duration, or hide behind opacity 0 |
+| hard-stop | still fast on its last frame | ease out, or a later tween overwrites it |
+| jerk | velocity kinks mid-move | merge chained tweens, or make both sides of the seam reach zero speed |
+| linear / linear-ease | constant speed | ease, unless a loop or marquee |
+| too-fast / sluggish | eye cannot follow / drags | 200-500ms for UI-sized moves |
+| layout-prop | animates left/width/… | x / y / scale / clipPath |
+| all-at-once | 6+ elements start on one frame | stagger 30-60ms |
+| dropped-frames | real playback misses 60 fps | blur, filters, shadows, layout in the moving layer |
+| text-overshoot | type passes its rest point | ms.out / ms.outSoft, never back/elastic on text |
+| bouncy | overshoot above `limits.overshoot` | only a true landing (ms.land), 1-7% of travel |
+| landings | more than `maxLandings` overshooting moves | keep the one or two real contacts |
+| fade-pop | fade-out on an out ease (half gone in one frame) | ms.smooth, 0.17-0.24 s |
+| strobe | visible move over 25 px/frame | longer, softer start (ms.rest/ms.glide) |
+| dead-time | nothing moves for over `maxIdle` mid-piece | overlap, drift, or a chosen breath |
+| end-hold | film/ad: last motion to end outside `endHold` | trim or extend the hold |
+| same-speed / ease-soup / off-token (info) | one tempo / too many eases / eases outside MOTION.md | vary duration by distance, stick to ms.* |
+
+Jerk is judged only on moves of 0.4 s or longer: a short fade peaks sharply by design. Opacity is what the viewer
+sees (ancestors multiply, visibility:hidden is 0), so a move that ends as its shot fades out is a cut, not a hard stop.
+
+Lint is a floor, not taste. A 100 can still be dull; the sheet's curves show rhythm (overlap, stagger, settle).
+`scenes/lint-fixture` breaks every rule on purpose: `ms lint lint-fixture` must keep reporting 3 errors, 9 warns, 1 info.
+
+## Critic loop (builder never judges its own work)
+
+```
+node bin/ms.mjs critic <scene> --run          # packet (sheet + full-size key frames + brief + MOTION.md + lint +
+                                              # open items) -> headless `claude -p` -> ledger .ms/review.json
+node bin/ms.mjs critic <scene>                # packet only: prompt at .ms/critic/prompt.md, for another judge
+node bin/ms.mjs critic <scene> --record answer.md
+node bin/ms.mjs review <scene>                # ledger: rounds, scores, open issues
+```
+
+The judge runs on MOTION.md `critic.model` / `critic.effort` (haiku, low: cheap and fast; `--model` overrides).
+SHIP is recomputed, never claimed: every axis >= `critic.ship`, no blocker, no open major from earlier rounds. Fix
+what is real, push back in the brief on what is a misread (say the kind and what chrome is real UI). After
+`critic.rounds` rounds without SHIP, stop polishing and show Jay the ledger.
+
+## Make (one prompt to a finished piece)
+
+`node bin/ms.mjs make "<what to make>" [--id x] [--format 9:16] [--rounds 2] [--no-render] [--model m]`: scaffold
+(format guessed from the words: reel/story -> 9:16, square -> 1:1, landing -> web, else 16:9) -> refs pull ->
+builder `claude -p` on MOTION.md `builder` (opus, medium: Jay's own model; the judge stays on haiku) (writes
+brief, scene, sound cues; lints and reads its own sheet) -> critic rounds, the builder
+resumed to fix each -> lint -> sound + render. Progress in `.ms/make.json`; `ms make --resume <id>` continues a stopped run (skips a finished build, redoes an
+interrupted fix, then judges once more); the studio's New form runs it when a
+description is given (`POST /api/make {prompt, id?, format?}`) and the card shows the stage.
+
+## HyperFrames
+
+`node bin/ms.mjs import <composition.html|dir> [--id x]` copies a HyperFrames composition into `scenes/<id>`, swaps its
+GSAP CDN script for the vendored one plus `/core/runtime.js`, and writes a brief. The runtime adopts the timeline in
+`window.__timelines` (the `[data-composition-id]` one) with each `.clip[data-start][data-duration]` window as sets, so
+studio, lint and render work unchanged. Inline-script tweens have no source line: `ms edit` cannot rewrite them.
+
+## New scene
+
+`node bin/ms.mjs new <id> --format 16:9|9:16|1:1|4:5|web [--kind ad|film|web] [--title "..."]` writes a skeleton at
+the MOTION.md `formats` size with a `.safe` box (`--safe-*` vars: where platform UI covers a feed video) and a
+`brief.md` to fill. Lay out each format for itself; never crop 16:9 to vertical.
+
+## References
+
+```
+node bin/ms.mjs refs "<query>" [--type ref|repo|skill]   # search memory-core's library (Jay's refs, stars, skills)
+node bin/ms.mjs refs <scene> --pull "<query>"           # best matches -> .ms/refs/refs.md + images; the critic sees them
+node bin/ms.mjs capture <url> [--clip 4] [--note "..."] [--scene <id>]   # still + scroll clip -> refs/<slug>/, to Jay's inbox
+```
+
+Pull refs before building a new piece and look at the images: they set the bar for detail and finish, they are not
+layouts to copy. Needs MC_URL + MC_TOKEN or `~/.memory-core.json`.
+
+## Sound
+
+Declare it on the timeline: `MS.register(tl, { ..., audio: { music: { src: "music.mp3", from: "end", gain: -3 },
+sfx: [{ at: "<tween id>", edge: "start"|"end", offset: 0, sound: "land", gain: 0 }, { t: 2.4, sound: "tick" }] } })`.
+
+Sounds come from earshot (`D:\Project\earshot`, Jay's starred repo, MIT; venv `.venv`, or set `EARSHOT_PY`):
+designed sounds and CC0 recordings fitted as code, every take audited. `sound:` resolves in this order:
+
+1. a kit role: tick, tick.crisp, tock, hit, land, land.light, pop, whoosh.short, whoosh.long, suck, riser, drop,
+   key, key.space, key.return, click, click.confirm, snap, swell, bell, text. The kit is MOTION.md `audio.kit`
+   (crisp | calm | minimal | launch, rendered once to `sounds/<kit>/`) or the scene's own `kit.json`. Repeated cues
+   rotate takes; bells climb pitches; `pitch: "E5"` picks one. Some roles are off per kit (crisp: riser/swell/suck).
+2. a bank id, e.g. `"ui_pop/soft"` (`earshot sfx list`, 252 sounds) with `pitch`/`dur`/`apex`/`seed` on the cue.
+3. a file in the scene folder.
+4. `synth:tick|pop|thud|whoosh`: placeholder only.
+
+Cues sync on the take's onset (whooshes/swells on their peak) and lead the event by `limits.sfxLead`.
+`from: "end"` back-times the music so its ending lands on the last frame. `ms audio <scene>` prints the cue sheet
+and builds `.ms/<scene>.wav` (two-pass loudnorm to -14 LUFS / -1 dBTP); `ms render` muxes it in (`--no-audio` to
+skip). Check what you cannot hear: `.venv/Scripts/python.exe -m earshot timeline <wav>` lists the events it hears.
+The studio's Sounds tab auditions every role. Music comes from Jay; never claim a mix sounds good without saying it
+was only measured, not heard.
+
+## Projects
+
+The studio opens on a Projects home (posters, notes/lint/critic chips, hover plays the render, duplicate, new).
+`#<id>` opens the editor. API: `GET /api/projects`, `POST /api/scenes/:id/poster`, `POST /api/scenes/:id/duplicate
+{id}`, `GET /api/scenes/:id/sounds`.
+
+## Video
+
+`node bin/ms.mjs render <scene> [--fps 60] [--scale 1]` → `scenes/<scene>/.ms/<scene>.mp4`, frame-exact with the
+studio. Needs ffmpeg on PATH. Output, stills, sheets and reports go to `.ms/` (not source).

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Lint fixture (deliberately bad)</title>
+<style>
+  html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; background: #eeeae1; font: 14px monospace; }
+  .b { position: absolute; width: 80px; height: 80px; background: #121110; color: #eeeae1; display: grid; place-items: center; }
+</style></head>
+<body>
+  <div class="b" data-ms="linear" style="left:80px;top:60px">linear</div>
+  <div class="b" data-ms="hard-stop" style="left:80px;top:180px">stop</div>
+  <div class="b" data-ms="teleport" style="left:80px;top:300px">jump</div>
+  <div class="b" data-ms="layout" style="left:80px;top:420px">left</div>
+  <div class="b" data-ms="chained" style="left:80px;top:540px">chain</div>
+  <span data-ms="text-bounce" style="position:absolute;left:1100px;top:60px;font-size:28px">Bounce</span>
+  <div class="b" data-ms="fade-pop" style="left:1100px;top:420px">fade</div>
+  <script src="/vendor/gsap/gsap.min.js"></script>
+  <script src="/core/runtime.js"></script>
+  <script>
+    // Every element here breaks one lint rule on purpose. Keep it as a regression check for core/lint.mjs.
+    const tl = gsap.timeline();
+    tl.to("[data-ms=linear]", { x: 900, duration: 1.2, ease: "none" }, 0)
+      .to("[data-ms=hard-stop]", { x: 900, duration: 0.8, ease: "power2.in" }, 0)
+      .set("[data-ms=teleport]", { x: 700 }, 0.6)
+      .to("[data-ms=layout]", { left: 900, duration: 0.6, ease: "power3.out" }, 0)
+      .to("[data-ms=chained]", { x: 400, duration: 0.5, ease: "power2.in" }, 0)
+      .to("[data-ms=chained]", { x: 900, duration: 0.5, ease: "power3.out" }, 0.5)
+      .to("[data-ms=text-bounce]", { y: 160, duration: 0.8, ease: "back.out(3)" }, 0)
+      .to("[data-ms=fade-pop]", { opacity: 0, duration: 0.6, ease: "expo.out" }, 0.3)
+      .to({}, { duration: 0.5 }, 1.2);
+    MS.register(tl, { width: 1280, height: 720, fps: 60 });
+  </script>
+</body></html>

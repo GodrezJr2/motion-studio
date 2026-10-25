@@ -1,0 +1,22 @@
+{
+  "name": "motion-studio",
+  "version": "1.0.0",
+  "description": "Motion studio: scrub, lint, pin notes and render one GSAP timeline",
+  "scripts": {
+    "studio": "node bin/ms.mjs serve",
+    "lint": "node bin/ms.mjs lint"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bin": {
+    "ms": "bin/ms.mjs"
+  },
+  "dependencies": {
+    "acorn": "^8.19.0",
+    "gsap": "^3.12.5",
+    "playwright": "^1.48.2",
+    "yaml": "^2.5.1"
+  }
+}

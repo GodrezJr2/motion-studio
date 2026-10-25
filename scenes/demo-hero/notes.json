@@ -1,0 +1,18 @@
+[
+  {
+    "id": "mvmow941",
+    "t": 3.317,
+    "x": 70.37,
+    "y": 48.98,
+    "text": "Dot path feels too flat here, arc it higher before it drops to the button.",
+    "status": "resolved",
+    "created": "2026-10-24T17:45:33.985Z",
+    "replies": [
+      {
+        "by": "ai",
+        "text": "Dot now rises to an apex (y 92) over 0.42s with sine.out, then falls onto the button with power2.inOut. Zero vertical speed at the apex, lint 100.",
+        "at": "2026-10-24T17:45:55.722Z"
+      }
+    ]
+  }
+]
