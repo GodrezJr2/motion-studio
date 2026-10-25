@@ -237,7 +237,8 @@ export function startServer({ port = 0, host = "127.0.0.1", watch = false } = {}
         if (!prompt) return send(res, 400, { error: "say what to make" });
         const { slugFor, guessFormat } = await import("./make.mjs");
         const id = /^[a-z0-9][a-z0-9-]*$/.test(b.id || "") && !fs.existsSync(path.join(SCENES, b.id)) ? b.id : slugFor(prompt);
-        const args = [path.join(ROOT, "bin", "ms.mjs"), "make", prompt, "--id", id, "--format", b.format || guessFormat(prompt)];
+        const args = [path.join(ROOT, "bin", "ms.mjs"), "make", prompt, "--id", id, "--format", b.format || guessFormat(prompt),
+          ...(/^[a-z]+$/.test(b.agent || "") ? ["--agent", b.agent] : [])];
         const child = spawn(process.execPath, args, { cwd: ROOT, stdio: "ignore", windowsHide: true });
         making.set(id, child);
         child.on("exit", () => { making.delete(id); broadcast({ type: "projects" }); });

@@ -1,0 +1,4 @@
+# Aider: load the agent guide and the taste file into every chat
+read:
+  - AGENTS.md
+  - MOTION.md

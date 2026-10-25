@@ -15,11 +15,13 @@
 //   ms edit <scene> --after 2.0 --shift 0.3      move every tween starting at or after 2.0 s
 //   ms import <composition.html|dir> [--id x]   bring a HyperFrames composition in as a scene
 //   ms make --resume <id>   continue a stopped run
-//   ms make "<prompt>" [--id x] [--format 9:16] [--rounds 2] [--no-render] [--model m]   brief -> refs -> build ->
-//                                   lint -> critic loop -> sound + render, all headless (claude -p)
+//   ms make "<prompt>" [--id x] [--format 9:16] [--rounds 2] [--no-render] [--model m] [--agent a] [--critic-agent a]
+//                                   brief -> refs -> build -> lint -> critic loop -> sound + render, all headless
+//                                   (agent: claude | codex | gemini | opencode; default MOTION.md builder.agent)
 //   ms notes <scene> [--all]        Jay's pinned notes (open only unless --all)
 //   ms reply <scene> <note> "text" [--resolve]
-//   ms critic <scene> [--run] [--brief "..."]   packet for a fresh critic (.ms/critic/prompt.md); --run asks claude -p
+//   ms critic <scene> [--run] [--brief "..."]   packet for a fresh critic (.ms/critic/prompt.md); --run asks the critic agent
+//                                   ([--agent a] [--model m] [--effort e])
 //   ms critic <scene> --record <answer>          add a critic's answer (text with a ```json block) to the ledger
 //   ms review <scene>                            the critic ledger: rounds, scores, open items
 //   ms refs "<query>" [--type ref|repo|skill]    search the reference shelf (memory-core library)
@@ -40,6 +42,9 @@ import { make } from "../core/make.mjs";
 import { importComposition } from "../core/importer.mjs";
 import { packet, runCritic, parseVerdict, record, readReview } from "../core/critic.mjs";
 import { tokensFor } from "../core/tokens.mjs";
+import { pick } from "../core/agents.mjs";
+
+const str = v => typeof v === "string" ? v : undefined; // a bare --flag parses as true
 
 const argv = process.argv.slice(2);
 const flags = {};
@@ -166,7 +171,7 @@ async function main() {
       const r = await make(prompt, { id: resume || (typeof flags.id === "string" ? flags.id : undefined), resume: !!resume,
         format: typeof flags.format === "string" ? flags.format : undefined, kind: flags.kind,
         rounds: flags.rounds != null ? +flags.rounds : undefined, render: !flags["no-render"],
-        model: flags.model, onLog: l => console.log(l) });
+        model: str(flags.model), agent: str(flags.agent), criticAgent: str(flags["critic-agent"]), onLog: l => console.log(l) });
       console.log(`done  ${r.id}  ${r.verdict}${r.video ? `  ${rel(r.video)}` : ""}`);
       break;
     }
@@ -198,14 +203,14 @@ async function main() {
         printRound(record(scene, parseVerdict(text), { by: flags.by || "critic", text }));
         break;
       }
-      const { promptFile } = await packet(scene, { brief: typeof flags.brief === "string" ? flags.brief : undefined });
+      const { promptFile, images } = await packet(scene, { brief: typeof flags.brief === "string" ? flags.brief : undefined });
       console.log(`critic packet  ${rel(promptFile)}`);
       if (!flags.run) { console.log("give it to a fresh critic, then: ms critic " + scene + " --record <answer file>"); break; }
-      const judge = flags.model || (tokensFor(scene).critic || {}).model || "default";
-      console.log(`critic running (claude -p, ${judge}) ...`);
-      const text = await runCritic(promptFile, { model: flags.model, effort: flags.effort, id: scene });
+      const j = pick(tokensFor(scene).critic || {}, { agent: str(flags.agent), model: str(flags.model), effort: str(flags.effort) });
+      console.log(`critic running (${j.name}, ${j.model || "default"}) ...`);
+      const { text, by } = await runCritic(promptFile, { agent: j.name, model: j.model, effort: j.effort, id: scene, images });
       fs.writeFileSync(promptFile.replace(/prompt\.md$/, "answer.md"), text);
-      printRound(record(scene, parseVerdict(text), { by: `claude -p ${judge}`, text }));
+      printRound(record(scene, parseVerdict(text), { by, text }));
       break;
     }
     case "refs": {

@@ -123,3 +123,15 @@ Remotion at most an adapter (audio). Visual skill routing must point ads at the 
 - Sound: kit role `text` is one thud, then silence while typing. Use per-key cues instead (13 x `key` every 0.09 s).
   earshot timeline merges them into ~2 onsets but silencedetect finds no gap: it is continuous. Measured, not heard.
 - README hero is now media/promo.gif (640 px, 12 fps, 6.2 MB) -> media/promo.mp4 (1280 px, 2 MB); 41 s film linked.
+
+## Done (25 Oct 2026, any agent)
+- Guide is now AGENTS.md (agent-neutral, no personal names); CLAUDE.md and GEMINI.md are `@AGENTS.md` imports,
+  .aider.conf.yml loads AGENTS.md + MOTION.md. Codex, OpenCode, Cursor, Copilot read AGENTS.md natively.
+- core/agents.mjs: headless adapters claude | codex | gemini | opencode for the `ms make` builder and the critic.
+  MOTION.md builder.agent / critic.agent, `--agent`, `ms make --critic-agent`, MS_AGENT; /api/make takes `agent`.
+  MOTION model/effort apply only to the agent named there. Tested: claude critic on ms-promo (round 1 REVISE
+  8/7/7/8/7). codex and gemini are not installed here (untested beyond "not installed"); opencode reached its
+  provider, which failed on Jay's side (opencode-go key expired, 9router socket closed).
+- ms-promo critic r1: real fix = end-card ring flashed before the dot (fromTo immediateRender); misreads pushed back
+  in brief.md. Re-rendered; media/promo.* refreshed; media/readme.gif removed (README hero is the promo).
+- earshot path no longer hard-coded: ../earshot/.venv next to the repo, or EARSHOT_PY.

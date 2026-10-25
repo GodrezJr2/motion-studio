@@ -1,10 +1,10 @@
-// `ms make "<prompt>"`: one request to a finished piece, headless. scaffold -> refs -> builder (claude -p, writes the
-// scene, lints and looks at its own sheet) -> critic loop (a different, cheap model judges; the builder fixes what is
-// real, resumed in the same session) -> sound + render. Progress goes to scenes/<id>/.ms/make.json so the studio's
-// Projects page can show it while it runs.
+// `ms make "<prompt>"`: one request to a finished piece, headless. scaffold -> refs -> builder (a coding agent from
+// agents.mjs, claude by default: writes the scene, lints and looks at its own sheet) -> critic loop (a different,
+// cheap model judges; the builder fixes what is real, resumed in the same session) -> sound + render. Progress goes
+// to scenes/<id>/.ms/make.json so the studio's Projects page can show it while it runs.
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { run, pick } from "./agents.mjs";
 import { newScene } from "./scaffold.mjs";
 import { pull } from "./shelf.mjs";
 import { packet, runCritic, parseVerdict, record, readReview } from "./critic.mjs";
@@ -37,53 +37,13 @@ export function readMake(id) {
   try { return JSON.parse(fs.readFileSync(path.join(outDir(id), "make.json"), "utf8")); } catch { return null; }
 }
 
-// claude -p with streamed events, so each tool call shows up as progress. Returns { text, session }.
-function claude(args, input, onEvent) {
-  const win = process.platform === "win32";
-  // shell on Windows (claude is a .cmd shim): quote every arg, they hold spaces, commas and parens
-  const argv = ["-p", "--output-format", "stream-json", "--verbose", ...args].map(a => win ? `"${a.replace(/"/g, '\\"')}"` : a);
-  return new Promise((resolve, reject) => {
-    const p = spawn("claude", argv, { cwd: ROOT, shell: win, stdio: ["pipe", "pipe", "pipe"] });
-    let buf = "", err = "", text = "", session = null;
-    p.stdout.on("data", d => {
-      buf += d;
-      let i;
-      while ((i = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, i).trim();
-        buf = buf.slice(i + 1);
-        if (!line) continue;
-        let ev;
-        try { ev = JSON.parse(line); } catch { continue; }
-        if (ev.session_id) session = ev.session_id;
-        if (ev.type === "result") text = ev.result || text;
-        if (ev.type === "assistant") for (const c of ev.message?.content || []) {
-          if (c.type === "tool_use") onEvent(describe(c));
-        }
-      }
-    });
-    p.stderr.on("data", d => { err += d; });
-    p.on("error", reject);
-    p.on("close", code => code === 0 ? resolve({ text, session }) : reject(new Error(`claude exited ${code}: ${(err || text).trim().slice(0, 400)}`)));
-    p.stdin.end(input);
-  });
-}
-
-function describe(c) {
-  const i = c.input || {};
-  const short = f => path.basename(String(f || ""));
-  if (c.name === "Bash") return "$ " + String(i.command || "").replace(/^node bin\/ms\.mjs /, "ms ").slice(0, 90);
-  if (c.name === "Read") return "look " + short(i.file_path);
-  if (c.name === "Write" || c.name === "Edit") return "edit " + short(i.file_path);
-  return c.name;
-}
-
 function buildPrompt(id, prompt, s, refs) {
   return `You are the builder in Motion Studio. The working directory is the studio repo. Make scene "${id}" from
 Jay's request below, as a finished piece a professional studio would ship.
 
 Jay's request: ${prompt}
 
-Read first: CLAUDE.md (how the studio and its tools work), MOTION.md (the taste law: eases, limits, banned list),
+Read first: AGENTS.md (how the studio and its tools work), MOTION.md (the taste law: eases, limits, banned list),
 then scenes/${id}/index.html, scene.js and brief.md: a skeleton at ${s.width}x${s.height}, kind ${s.kind}, with a
 .safe box for platform UI.${refs ? ` References that set the bar are in scenes/${id}/.ms/refs/refs.md: Read their
 images for the level of detail and finish, do not copy layouts.` : ""}
@@ -99,7 +59,7 @@ Do:
    dealt with, \`node bin/ms.mjs sheet ${id}\` and Read the PNG, \`node bin/ms.mjs frame ${id} <t> --scale 1\` for key
    moments. Fix what looks wrong. Two or three passes, then stop.
 
-Only create or change files inside scenes/${id}/. Do not invoke skills: CLAUDE.md and MOTION.md hold all you need. Do not render, do not run the critic. End with three short lines:
+Only create or change files inside scenes/${id}/. Do not invoke skills: AGENTS.md and MOTION.md hold all you need. Do not render, do not run the critic. End with three short lines:
 the idea, what moves, what you are least sure about.`;
 }
 
@@ -125,7 +85,7 @@ function readSize(id) {
 }
 
 // resume: pick a stopped run (session limit, crash) up where make.json says it stopped, without rebuilding
-export async function make(prompt, { id, format, kind, rounds, render: doRender = true, model, resume = false, onLog = () => {} } = {}) {
+export async function make(prompt, { id, format, kind, rounds, render: doRender = true, model, agent, criticAgent, resume = false, onLog = () => {} } = {}) {
   const prev = resume ? readMake(id) : null;
   if (resume && !prev) throw new Error(`no make run to resume for "${id}"`);
   prompt = prompt || prev.prompt;
@@ -147,13 +107,15 @@ export async function make(prompt, { id, format, kind, rounds, render: doRender 
   const stage = name => { status.stage = name; log(name === "done" ? "finished" : `-> ${name}`); };
   log(prev ? `resume from ${stopped}` : `${id}: ${s.width}x${s.height} ${s.kind} (${format})`);
 
-  const tools = ["--allowedTools", "Read,Write,Edit,Glob,Grep,Bash(node bin/ms.mjs:*)", "--permission-mode", "acceptEdits"];
-  const b = tokensFor(id).builder || {};
-  const mod = [...(model || b.model ? ["--model", model || b.model] : []), ...(b.effort ? ["--effort", b.effort] : [])];
+  const b = pick(tokensFor(id).builder || {}, { agent, model });
+  // a session id only means something to the agent that made it
+  if (status.agent && status.agent !== b.name) status.session = null;
+  status.agent = b.name;
+  const builder = (input, session) => run(b.name, input, { role: "build", model: b.model, effort: b.effort, session, cwd: ROOT, onEvent: log });
   // fixes continue the builder's session when there is one (it remembers why it built what it built)
   const fix = async (n, round) => {
     stage(`fix ${n}`);
-    const fixed = await claude([...tools, ...mod, ...(status.session ? ["--resume", status.session] : [])], fixPrompt(id, round), log);
+    const fixed = await builder(fixPrompt(id, round), status.session);
     if (fixed.session) status.session = fixed.session;
     log(fixed.text.trim().split("\n").slice(-4).join(" / "));
   };
@@ -169,7 +131,8 @@ export async function make(prompt, { id, format, kind, rounds, render: doRender 
       } catch (e) { log(`no references: ${e.message}`); }
 
       stage("build");
-      const built = await claude([...tools, ...mod], buildPrompt(id, prompt, s, refs), log);
+      log(`builder: ${b.name} ${b.model || "default"}`);
+      const built = await builder(buildPrompt(id, prompt, s, refs));
       Object.assign(status, { built: true, session: built.session });
       log(built.text.trim().split("\n").slice(-3).join(" / "));
     }
@@ -181,10 +144,10 @@ export async function make(prompt, { id, format, kind, rounds, render: doRender 
     if (midFix) { await fix(judged, readReview(id).rounds.at(-1)); rounds = Math.max(rounds, judged + 1); }
     if (!/^(lint|render|done)/.test(stopped || "")) for (let n = judged + 1; n <= rounds; n++) {
       stage(`critic ${n}`);
-      const { promptFile } = await packet(id);
-      const text = await runCritic(promptFile, { id });
+      const { promptFile, images } = await packet(id);
+      const { text, by } = await runCritic(promptFile, { id, agent: criticAgent, images });
       fs.writeFileSync(promptFile.replace(/prompt\.md$/, "answer.md"), text);
-      const round = record(id, parseVerdict(text), { by: `claude -p ${(tokensFor(id).critic || {}).model || "default"} (make)`, text });
+      const round = record(id, parseVerdict(text), { by: `${by} (make)`, text });
       status.verdict = round.verdict;
       log(`${round.verdict}  ${Object.entries(round.scores).map(([a, v]) => `${a} ${v}`).join(" ")}  ${round.issues.length} items`);
       if (round.verdict === "SHIP" || n === rounds) break;

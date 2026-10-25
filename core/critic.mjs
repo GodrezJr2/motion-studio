@@ -1,10 +1,10 @@
 // The critic loop: the builder never judges its own work. `packet` renders what a fresh critic needs (contact sheet,
 // key frames, brief, MOTION.md, lint, the open items of the last round) and writes the prompt; `runCritic` hands it
-// to a headless Claude (`claude -p`, Jay's own login) with read-only tools; `record` appends the verdict to the
-// ledger in .ms/review.json. The verdict is recomputed from the scores, so nobody can certify a piece by saying so.
+// to a headless coding agent (claude by default, see agents.mjs) with read-only tools; `record` appends the verdict
+// to the ledger in .ms/review.json. The verdict is recomputed from the scores, so nobody can certify a piece by saying so.
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { run, pick } from "./agents.mjs";
 import { sheet } from "./sheet.mjs";
 import { withScene, outDir, sceneDir, stills } from "./session.mjs";
 import { tokensFor, motionProse } from "./tokens.mjs";
@@ -63,7 +63,7 @@ Piece: scene "${id}", ${report.info.width}x${report.info.height}, ${report.info.
 Brief:
 ${brief}
 
-Look at these with the Read tool (they are images). The frames are 1:1 with the stage, so judge type size and
+Open these images with your file-reading tool (or look at them where they are attached). The frames are 1:1 with the stage, so judge type size and
 sharpness from them; the contact sheet stills are thumbnails, judge only timing and rhythm from those:
 - Contact sheet (stills across time, velocity/opacity/scale curves, lint issue bands): ${sheetFile}
 ${frames.map((f, i) => `- Frame at ${times[i]}s: ${f}`).join("\n")}
@@ -99,7 +99,7 @@ Answer with a short paragraph of judgement, then exactly one fenced json block:
 `;
   const promptFile = path.join(dir, "prompt.md");
   fs.writeFileSync(promptFile, prompt);
-  return { promptFile, sheetFile, frames, report };
+  return { promptFile, sheetFile, frames, report, images: [sheetFile, ...frames] };
 }
 
 export function parseVerdict(text) {
@@ -108,24 +108,12 @@ export function parseVerdict(text) {
   return JSON.parse(blocks[blocks.length - 1][1]);
 }
 
-// The judge runs on MOTION.md critic.model / critic.effort (cheap and fast by default); --model overrides
-export function runCritic(promptFile, { model, effort, id } = {}) {
-  const c = (id && tokensFor(id).critic) || {};
-  model = model || c.model;
-  effort = effort || c.effort;
-  const args = ["-p", "--allowedTools", "Read,Bash(ffmpeg:*)", "--output-format", "text"];
-  if (model) args.push("--model", model);
-  if (effort) args.push("--effort", effort);
-  return new Promise((resolve, reject) => {
-    // shell: claude is a .cmd shim on Windows
-    const p = spawn("claude", args, { shell: process.platform === "win32", stdio: ["pipe", "pipe", "pipe"] });
-    let out = "", err = "";
-    p.stdout.on("data", d => { out += d; });
-    p.stderr.on("data", d => { err += d; });
-    p.on("error", reject);
-    p.on("close", code => code === 0 ? resolve(out) : reject(new Error(`claude exited ${code}: ${err.trim() || out.trim()}`)));
-    p.stdin.end(fs.readFileSync(promptFile, "utf8"));
-  });
+// The judge runs on MOTION.md critic.agent / model / effort (claude on haiku, low: cheap and fast); flags override.
+// Returns { text, by }; `by` names the judge in the ledger. Images are attached for agents that take them as flags.
+export async function runCritic(promptFile, { agent, model, effort, id, images = [] } = {}) {
+  const j = pick((id && tokensFor(id).critic) || {}, { agent, model, effort });
+  const { text } = await run(j.name, fs.readFileSync(promptFile, "utf8"), { role: "critic", model: j.model, effort: j.effort, images });
+  return { text, by: `${j.name} ${j.model || "default"}` };
 }
 
 // Append one critic round. Recomputes the verdict and carries the verification onto earlier issues.

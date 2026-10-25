@@ -36,7 +36,9 @@ export const ROLES = ["tick", "tick.crisp", "tock", "hit", "land", "land.light",
 export const SOUNDS = ROLES;
 
 const SOUNDS_DIR = path.join(ROOT, "sounds");
-const earshotPy = () => process.env.EARSHOT_PY || "D:/Project/earshot/.venv/Scripts/python.exe";
+// earshot checked out next to this repo (../earshot) with its own venv, unless EARSHOT_PY points elsewhere
+const earshotPy = () => process.env.EARSHOT_PY || path.join(ROOT, "..", "earshot", ".venv",
+  process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
 
 function run(cmd, args) {
   return new Promise((resolve, reject) => {
