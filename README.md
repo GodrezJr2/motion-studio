@@ -20,7 +20,7 @@ stay on your machine (`scenes/*` and `media/` are gitignored).
 ## Examples
 
 Three 9:16 pieces an agent built in the studio from a brief, with an Indonesian voice-over and sound. Each preview
-loops eight silent seconds. Their scene sources are not in this repo.
+loops eight silent seconds.
 
 <table>
 <tr>
