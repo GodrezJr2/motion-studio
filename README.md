@@ -20,22 +20,22 @@ stay on your machine (`scenes/*` and `media/` are gitignored).
 ## Examples
 
 Three 9:16 pieces an agent built in the studio from a brief, with an Indonesian voice-over and sound. Each preview
-loops eight silent seconds; click it for the full video with sound. Their scene sources are not in this repo.
+loops eight silent seconds. Their scene sources are not in this repo.
 
 <table>
 <tr>
 <td align="center" width="33%">
-<a href="https://github.com/user-attachments/assets/c370c834-a759-4f76-a8a9-ef66622e49da"><img src="docs/examples/langit.webp" width="240" alt="Langit: a spectrum chart asking why the sky is not violet, then the sun over the horizon"></a><br>
+<img src="docs/examples/langit.webp" width="240" alt="Langit: a spectrum chart asking why the sky is not violet, then the sun over the horizon"><br>
 <b>Langit</b><br>
 <sub>A 43 s science explainer: why the sky is blue (Rayleigh scattering).</sub>
 </td>
 <td align="center" width="33%">
-<a href="https://github.com/user-attachments/assets/938eda6b-9cf6-43a7-afad-3513d7666bd9"><img src="docs/examples/hening.webp" width="240" alt="Hening: a typed command, then glass notification cards sorting into four decks over blue silk light"></a><br>
+<img src="docs/examples/hening.webp" width="240" alt="Hening: a typed command, then glass notification cards sorting into four decks over blue silk light"><br>
 <b>Hening</b><br>
 <sub>A 55 s ad for a made-up focus app: WebGL silk light behind glass cards.</sub>
 </td>
 <td align="center" width="33%">
-<a href="https://github.com/user-attachments/assets/a942be88-8028-4dc7-a3fc-ee1eedecff85"><img src="docs/examples/lintasi.webp" width="240" alt="Lintasi: a late-truck message from a customer, a leaking margin bucket, then the title"></a><br>
+<img src="docs/examples/lintasi.webp" width="240" alt="Lintasi: a late-truck message from a customer, a leaking margin bucket, then the title"><br>
 <b>Lintasi</b><br>
 <sub>A 22 s ad for a trip-tracking app for truck brokerages, on demo data.</sub>
 </td>
