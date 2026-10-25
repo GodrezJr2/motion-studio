@@ -115,3 +115,11 @@ Remotion at most an adapter (audio). Visual skill routing must point ads at the 
 ## Next
 - GitHub repo GodrezJr2/motion-studio (created private; Jay flips to public). Drag media/motion-studio.mp4 into the
   README on github.com for an inline player (<=10 MB).
+
+## Done (25 Oct 2026, promo)
+- `scenes/ms-promo` (16:9, 20 s, kind ad, pace crisp): UI-promo cut in the TikTok @skill.stack.store style, in the
+  house look. Tool pills pop + collapse, dot ripple + vermilion flood + wordmark, `ms make` prompt bar types, blur to
+  focus on the real studio + stage ticks, masonry of real frames, word roller, blur-in line, end card. Lint 86, 0E 0W.
+- Sound: kit role `text` is one thud, then silence while typing. Use per-key cues instead (13 x `key` every 0.09 s).
+  earshot timeline merges them into ~2 onsets but silencedetect finds no gap: it is continuous. Measured, not heard.
+- README hero is now media/promo.gif (640 px, 12 fps, 6.2 MB) -> media/promo.mp4 (1280 px, 2 MB); 41 s film linked.

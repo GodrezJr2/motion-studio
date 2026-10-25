@@ -2,10 +2,11 @@
 
 **Models write motion blind. This gives them eyes.**
 
-[![Motion Studio, 41 s film](media/readme.gif)](media/motion-studio.mp4)
+[![Motion Studio, 20 s promo](media/promo.gif)](media/promo.mp4)
 
-*41 s film with sound: [media/motion-studio.mp4](media/motion-studio.mp4). It was made in the studio itself; the UI,
-terminal output, scores and notes in it come from real runs.*
+*20 s promo with sound: [media/promo.mp4](media/promo.mp4). The longer walkthrough, a 41 s film:
+[media/motion-studio.mp4](media/motion-studio.mp4). Both were made in the studio itself (`scenes/ms-promo`,
+`scenes/ms-readme`); the UI, terminal output, scores and notes in them come from real runs.*
 
 An LLM agent can write a GSAP timeline, but it cannot see whether the result teleports, stops dead or strobes.
 Motion Studio turns one seekable timeline into things a model can read: a tween table with the source line of every
