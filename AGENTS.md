@@ -80,7 +80,8 @@ the note is addressed; if you disagree or need their eye, reply without `--resol
 | end-hold | film/ad: last motion to end outside `endHold` | trim or extend the hold |
 | same-speed / ease-soup / off-token (info) | one tempo / too many eases / eases outside MOTION.md | vary duration by distance, stick to ms.* |
 
-Jerk is judged only on moves of 0.4 s or longer: a short fade peaks sharply by design. Opacity is what the viewer
+Motion that is bad on purpose (the "before" of a before/after) gets `data-ms-role="demo"`: lint lists it once and does
+not judge its curves. Jerk is judged only on moves of 0.4 s or longer: a short fade peaks sharply by design. Opacity is what the viewer
 sees (ancestors multiply, visibility:hidden is 0), so a move that ends as its shot fades out is a cut, not a hard stop.
 
 Lint is a floor, not taste. A 100 can still be dull; the sheet's curves show rhythm (overlap, stagger, settle).

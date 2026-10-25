@@ -53,7 +53,14 @@ export function lint(sample, tweens = [], gaps = null, { tokens = {}, info = {} 
   const add = (severity, rule, el, t0, t1, message, fix) =>
     issues.push({ severity, rule, element: el, t0: r2(t0), t1: r2(t1), message, fix });
 
+  // data-ms-role="demo": motion that is bad on purpose (the "before" of a before/after). Its curves are not judged,
+  // only listed once, so a piece can show what it fixes without failing its own lint.
+  const demo = new Set(names.filter((_, e) => roles[e] === "demo"));
+  if (demo.size) add("info", "demo", `${demo.size} elements`, 0, sample.duration,
+    `not judged, bad on purpose: ${[...demo].join(", ")}`, "Only for a deliberate before; everything else is judged.");
+
   names.forEach((name, e) => {
+    if (demo.has(name)) return;
     const series = ch => frames.map(f => f[e][CH[ch]]);
     const report = { name, moves: [] };
 
@@ -198,7 +205,7 @@ export function lint(sample, tweens = [], gaps = null, { tokens = {}, info = {} 
     const layout = tw.props.filter(p => LAYOUT_PROPS.test(p));
     if (layout.length) add("warn", "layout-prop", tw.targets[0] || tw.id || "?", tw.start, tw.start + tw.duration,
       `animates ${layout.join(", ")} (layout, repaints every frame)`, "Animate x / y / scale / clipPath instead.");
-    if (/^(none|linear)$/.test(tw.ease) && tw.repeat === 0 && tw.duration > 0.2) add("warn", "linear-ease", tw.targets[0] || "?",
+    if (/^(none|linear)$/.test(tw.ease) && tw.repeat === 0 && !demo.has(tw.targets[0]) && tw.duration > 0.2) add("warn", "linear-ease", tw.targets[0] || "?",
       tw.start, tw.start + tw.duration, `tween uses ease "${tw.ease}"`, "Pick an ease; linear only for loops and scrubbed scroll.");
     const key = Math.round(tw.start * fps);
     starts.set(key, (starts.get(key) || 0) + tw.targets.length);
