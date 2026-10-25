@@ -309,7 +309,7 @@
           h("button", { class: "at", onclick: () => selectNote(n.id, true) }, `${n.t.toFixed(2)}s · ${tc(n.t)}`),
           h("span", { class: "st" }, n.status)),
         h("div", { class: "body" }, n.text),
-        n.replies.map(r => h("div", { class: "rep" + (r.by === "jay" ? "" : " ai") }, h("b", {}, r.by === "jay" ? "Jay" : "AI"), r.text)),
+        n.replies.map(r => h("div", { class: "rep" + (r.by === "jay" ? "" : " ai") }, h("b", {}, r.by === "jay" ? "You" : "AI"), r.text)),
         h("div", { class: "acts" },
           h("button", { onclick: async () => {
             await api(`/api/scenes/${S.id}/notes/${n.id}`, { method: "POST", body: { status: n.status === "open" ? "resolved" : "open" } });

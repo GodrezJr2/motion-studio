@@ -39,9 +39,9 @@ export function readMake(id) {
 
 function buildPrompt(id, prompt, s, refs) {
   return `You are the builder in Motion Studio. The working directory is the studio repo. Make scene "${id}" from
-Jay's request below, as a finished piece a professional studio would ship.
+the user's request below, as a finished piece a professional studio would ship.
 
-Jay's request: ${prompt}
+The user's request: ${prompt}
 
 Read first: AGENTS.md (how the studio and its tools work), MOTION.md (the taste law: eases, limits, banned list),
 then scenes/${id}/index.html, scene.js and brief.md: a skeleton at ${s.width}x${s.height}, kind ${s.kind}, with a

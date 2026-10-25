@@ -73,7 +73,7 @@ MS.register(tl, {
 Audience:
 Feel:
 The one idea:
-Assets (real logo, screenshots, copy, music; from Jay or the brief, never invented):
+Assets (real logo, screenshots, copy, music; from the user or the brief, never invented):
 `);
   return { dir, width: w, height: h, kind, safe: s };
 }

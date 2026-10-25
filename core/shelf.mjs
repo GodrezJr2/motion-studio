@@ -1,7 +1,7 @@
-// The reference shelf. Taste comes from examples: Jay's saved references, starred repos and motion skills live in
+// The reference shelf. Taste comes from examples: your saved references, starred repos and motion skills live in
 // memory-core's library (the RAG), and `pull` brings the best matches for a brief into the scene (.ms/refs/refs.md
 // plus their images) so the builder and the critic both look at the bar. `capture` screenshots (and optionally
-// records) a live site into refs/<slug>/ and saves it back to the library, where it waits in Jay's inbox.
+// records) a live site into refs/<slug>/ and saves it back to the library, where it waits in the library inbox.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

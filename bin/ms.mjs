@@ -18,7 +18,7 @@
 //   ms make "<prompt>" [--id x] [--format 9:16] [--rounds 2] [--no-render] [--model m] [--agent a] [--critic-agent a]
 //                                   brief -> refs -> build -> lint -> critic loop -> sound + render, all headless
 //                                   (agent: claude | codex | gemini | opencode; default MOTION.md builder.agent)
-//   ms notes <scene> [--all]        Jay's pinned notes (open only unless --all)
+//   ms notes <scene> [--all]        pinned notes (open only unless --all)
 //   ms reply <scene> <note> "text" [--resolve]
 //   ms critic <scene> [--run] [--brief "..."]   packet for a fresh critic (.ms/critic/prompt.md); --run asks the critic agent
 //                                   ([--agent a] [--model m] [--effort e])
@@ -27,7 +27,7 @@
 //   ms refs "<query>" [--type ref|repo|skill]    search the reference shelf (memory-core library)
 //   ms refs <scene> --pull "<query>"             best refs (+ images) into .ms/refs/refs.md for builder and critic
 //   ms capture <url> [--clip 6] [--note ""] [--scene s] [--no-push]   screenshot (+ scroll clip) a site to refs/,
-//                                                saved back to the library (Jay's inbox)
+//                                                saved back to the library (the inbox)
 import fs from "node:fs";
 import path from "node:path";
 import { startServer, listScenes, readNotes, writeNotes } from "../core/server.mjs";
@@ -232,7 +232,7 @@ async function main() {
       const m = await capture(url, { clip: +(flags.clip || 0), note: typeof flags.note === "string" ? flags.note : "",
         scene: typeof flags.scene === "string" ? flags.scene : undefined, push: !flags["no-push"] });
       console.log(`${rel(m.shot)}${m.video ? `  ${rel(m.video)}` : ""}`);
-      if (m.library) console.log(m.library.id ? `library  ref #${m.library.id}${m.library.merged ? " (merged)" : ""}, in Jay's inbox` : `library  ${m.library.error}`);
+      if (m.library) console.log(m.library.id ? `library  ref #${m.library.id}${m.library.merged ? " (merged)" : ""}, in the library inbox` : `library  ${m.library.error}`);
       break;
     }
     case "review": {

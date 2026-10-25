@@ -52,12 +52,12 @@ audio:
 critic:
   axes: [idea, motion, type, layout, finish]
   ship: 8 # every axis at or above this, and no blocker
-  rounds: 3 # then ask Jay instead of polishing further
+  rounds: 3 # then ask the user instead of polishing further
   agent: claude # claude | codex | gemini | opencode (core/agents.mjs); --agent or MS_AGENT overrides
   model: haiku # the judge: cheap and fast; model/effort apply only to the agent named here, --model overrides
   effort: low
 
-builder: # ms make's builder: the same model Jay works with, not the cheap judge; --model on ms make overrides
+builder: # ms make's builder: the same model you work with, not the cheap judge; --model on ms make overrides
   agent: claude # another agent (--agent codex) runs on its own default model unless --model is given
   model: opus
   effort: medium
@@ -119,5 +119,5 @@ on small moves, the hero moments clearly audible, designed silence before the tu
 
 ## Truth
 
-Real screenshots, logos and copy come from Jay or the brief. Anything invented to look real is not shipped; a
+Real screenshots, logos and copy come from the user or the brief. Anything invented to look real is not shipped; a
 sample placeholder is labelled as one.

@@ -1,14 +1,23 @@
 {
   "name": "motion-studio",
   "version": "1.0.0",
-  "description": "Motion studio: scrub, lint, pin notes and render one GSAP timeline",
+  "description": "Gives coding agents eyes for motion: scrub, lint, judge and render one GSAP timeline",
   "scripts": {
     "studio": "node bin/ms.mjs serve",
     "lint": "node bin/ms.mjs lint"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "motion",
+    "gsap",
+    "animation",
+    "video",
+    "lint",
+    "ai-agents",
+    "claude-code",
+    "codex"
+  ],
+  "author": "Jayson Christopher Lim (https://github.com/GodrezJr2)",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "ms": "bin/ms.mjs"
@@ -18,5 +27,9 @@
     "gsap": "^3.12.5",
     "playwright": "^1.48.2",
     "yaml": "^2.5.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GodrezJr2/motion-studio"
   }
 }

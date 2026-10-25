@@ -4,12 +4,33 @@
 
 **Coding agents write motion blind. This gives them eyes.**
 
+One prompt in. A linted, judged, sound-designed MP4 out, and every frame checked on the way.
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-2f73c0)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/GodrezJr2/motion-studio?style=flat&color=2f73c0)](https://github.com/GodrezJr2/motion-studio/stargazers)
+![Node 18+](https://img.shields.io/badge/node-18%2B-2f73c0)
+![Works with Claude Code, Codex, Gemini CLI, OpenCode](https://img.shields.io/badge/agents-Claude%20Code%20·%20Codex%20·%20Gemini%20·%20OpenCode-2f73c0)
+
 [![Motion Studio, 20 s promo](media/promo.gif)](media/promo.mp4)
 
-*20 s promo, with sound: [promo.mp4](media/promo.mp4) · 41 s walkthrough: [motion-studio.mp4](media/motion-studio.mp4)*
-*Both were made in the studio itself (`scenes/ms-promo`, `scenes/ms-readme`). The UI, scores and notes in them come from real runs.*
+*This promo was made in the studio, by an agent, from one brief (`scenes/ms-promo`). Sound on: [promo.mp4](media/promo.mp4).*
 
 </div>
+
+## Made with it
+
+<table>
+<tr>
+<td width="50%"><a href="media/j5-promo.mp4"><img src="media/j5-promo.gif" alt="J5 EV Dashboard promo"></a></td>
+<td width="50%"><a href="media/motion-studio.mp4"><img src="media/walkthrough.gif" alt="Motion Studio walkthrough"></a></td>
+</tr>
+<tr>
+<td><b>A product promo</b>: the same cut on a real app, <a href="https://github.com/GodrezJr2/j5-ev-dashboard">J5 EV Dashboard</a>. Real UI captured from its demo mode, receipt figures from its README. 20 s, <a href="media/j5-promo.mp4">mp4 with sound</a> · <code>scenes/j5-promo</code></td>
+<td><b>The walkthrough</b>: 41 s tour of the studio, with a real note, the agent's real reply and the real diff. <a href="media/motion-studio.mp4">mp4</a> · <code>scenes/ms-readme</code></td>
+</tr>
+</table>
+
+Every scene is a folder you can open, scrub and remix: `node bin/ms.mjs serve`, then pick it on the home page.
 
 ---
 
@@ -147,3 +168,17 @@ AGENTS.md         the guide every coding agent reads
 
 Built on [GSAP](https://gsap.com) and Playwright with system Chrome; sound by
 [earshot](https://github.com/Leonxlnx/earshot) (MIT); HyperFrames compositions supported through `ms import`.
+
+## Star history
+
+<a href="https://star-history.com/#GodrezJr2/motion-studio&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=GodrezJr2/motion-studio&type=Date&theme=dark">
+    <img alt="Star history chart" src="https://api.star-history.com/svg?repos=GodrezJr2/motion-studio&type=Date">
+  </picture>
+</a>
+
+## License
+
+[MIT](LICENSE). GSAP is loaded from npm under its own license; sound comes from earshot (MIT). The J5 EV Dashboard
+example shows a separate project; its UI and car render belong to that repo.
