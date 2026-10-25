@@ -167,7 +167,8 @@ designed sounds and CC0 recordings fitted as code, every take audited. `sound:` 
    (crisp | calm | minimal | launch, rendered once to `sounds/<kit>/`) or the scene's own `kit.json`. Repeated cues
    rotate takes; bells climb pitches; `pitch: "E5"` picks one. Some roles are off per kit (crisp: riser/swell/suck).
 2. a bank id, e.g. `"ui_pop/soft"` (`earshot sfx list`, 252 sounds) with `pitch`/`dur`/`apex`/`seed` on the cue.
-3. a file in the scene folder.
+3. a file in the scene folder (e.g. `audio/raw/1492.wav`); give it `sync:` = seconds from the file start to the onset
+   (clicks) or peak (whooshes) that should meet the event (`analyze.py` in earshot's real-sound skill measures both).
 4. `synth:tick|pop|thud|whoosh`: placeholder only.
 
 Cues sync on the take's onset (whooshes/swells on their peak) and lead the event by `limits.sfxLead`.
@@ -176,6 +177,15 @@ and builds `.ms/<scene>.wav` (two-pass loudnorm to -14 LUFS / -1 dBTP); `ms rend
 skip). Check what you cannot hear: `.venv/Scripts/python.exe -m earshot timeline <wav>` lists the events it hears.
 The studio's Sounds tab auditions every role. Music comes from the user; never claim a mix sounds good without saying it
 was only measured, not heard.
+
+Music, the way the strongest published launch-film prompts do it:
+
+- One licensed track (Mixkit, Pixabay, CC0/CC BY; raw files in `scenes/<id>/audio/raw/`, never committed) at about
+  120-130 BPM. Measure its tempo and drop first, then place it with `from: <seconds>` so the drop lands on the hero
+  reveal; let the picture follow the music's grid where you can (a bar is 4 beats of 60/BPM s).
+- Effects only on real on-screen actions: one soft whoosh per real scene change, a click or pop per tap, one soft note
+  on the logo. Keep them just above the bed, never louder than the music; fade the music under the end card.
+- Banned: EDM risers, whooshes on everything, stock "tech interface" beds, a synthesized hit doubling the drop.
 
 ## Projects
 

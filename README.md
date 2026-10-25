@@ -168,6 +168,8 @@ AGENTS.md         the guide every coding agent reads
 
 Built on [GSAP](https://gsap.com) and Playwright with system Chrome; sound by
 [earshot](https://github.com/Leonxlnx/earshot) (MIT); HyperFrames compositions supported through `ms import`.
+The two promos use music and effects from [Mixkit](https://mixkit.co) ("Cat Walk" by Arulo; free licence, files
+not included: `scenes/<id>/audio/README.md` lists them).
 
 ## Star history
 

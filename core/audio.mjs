@@ -160,6 +160,8 @@ export async function plan(id, info, tweens) {
     } else {
       file = path.join(sceneDir(id), raw);
       if (!fs.existsSync(file)) throw new Error(`audio cue: no sound "${raw}" (a kit role: ${ROLES.join(", ")}; a bank id like ui_pop/soft; a file in the scene folder; or synth:tick|pop|thud|whoosh)`);
+      // A file's own sync point: seconds from its start to the onset (clicks) or peak (whooshes) that meets the event
+      sync = c.sync || 0;
     }
     const start = t + offset - sync;
     cues.push({ sound: raw, from, event: +t.toFixed(3), start: +Math.max(0, start).toFixed(3), trim: +Math.max(0, -start).toFixed(3),

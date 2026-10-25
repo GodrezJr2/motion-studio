@@ -4,3 +4,4 @@ refs/**/*.mp4
 refs/
 scenes/*/.ms/
 NOTES.md
+scenes/*/audio/raw/
