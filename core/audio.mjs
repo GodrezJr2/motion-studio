@@ -329,9 +329,10 @@ export async function mix(id, p) {
     });
     const vl = vo.map((_, k) => `[v${k}]`).join("");
     chains.push(vo.length > 1 ? `${vl}amix=inputs=${vo.length}:normalize=0:duration=longest[vo]` : `${vl}anull[vo]`);
-    // Duck the music under the voice: the voice keys a compressor on the bed (MOTION.md audio.vo.duck = ratio, 0 = off)
+    // Duck the music under the voice: the voice keys a compressor on the bed (MOTION.md audio.vo.duck = ratio, 0 = off).
+    // The key is padded to full length: sidechaincompress stops when its shortest input does, which cut the music.
     if (p.music && p.duck) {
-      chains.push("[vo]asplit=2[vo1][vkey]", `[m][vkey]sidechaincompress=threshold=0.05:ratio=${p.duck}:attack=25:release=450[md]`);
+      chains.push(`[vo]asplit=2[vo1][vk];[vk]apad=whole_dur=${num(p.duration)}[vkey]`, `[m][vkey]sidechaincompress=threshold=0.05:ratio=${p.duck}:attack=25:release=450[md]`);
       labels[0] = "[md]";
       labels.push("[vo1]");
     } else labels.push("[vo]");
