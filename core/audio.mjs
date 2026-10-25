@@ -15,7 +15,15 @@
 // as code, each audited for clicks and cut tails, with measured onset / peak so the right point lands on the picture.
 // Every sound leads its event by MOTION.md `limits.sfxLead`, unless its kit role sets its own offset_ms. The mix is
 // normalised in two passes to `audio.lufs` / `audio.truePeak`.
+//
+// Voice-over, on the same timeline:
+//   vo: [{ at: "hero", text: "Satu garis untuk semua trip.", voice: "id-ID-GadisNeural", gain: 0 }, { t: 4.2, text: "..." }]
+// Speech starts on the cue (leading silence measured and skipped). Provider, voice and model default from MOTION.md
+// `audio.vo`: edge (free Edge read-aloud voices, for drafts) or elevenlabs (paid, needs ELEVENLABS_API_KEY in the env
+// or .env). Takes are cached in sounds/vo by provider + voice + model + text, so a line is paid for once. Music ducks
+// under the voice with a sidechain compressor.
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { outDir, sceneDir } from "./session.mjs";
@@ -40,9 +48,10 @@ const SOUNDS_DIR = path.join(ROOT, "sounds");
 const earshotPy = () => process.env.EARSHOT_PY || path.join(ROOT, "..", "earshot", ".venv",
   process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
 
-function run(cmd, args) {
+function run(cmd, args, input) {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(cmd, args, { stdio: [input == null ? "ignore" : "pipe", "pipe", "pipe"] });
+    if (input != null) p.stdin.end(input, "utf8");
     let out = "", err = "";
     p.stdout.on("data", d => { out += d; });
     p.stderr.on("data", d => { err += d; });
@@ -114,21 +123,113 @@ async function bankTake(sound, c) {
   return { file, take: JSON.parse(fs.readFileSync(meta, "utf8")) };
 }
 
+// ---- voice-over ----
+const VO_DIR = path.join(SOUNDS_DIR, "vo");
+let dotenv;
+function env(k) {
+  if (process.env[k]) return process.env[k];
+  if (!dotenv) {
+    dotenv = {};
+    const f = path.join(ROOT, ".env");
+    if (fs.existsSync(f)) for (const l of fs.readFileSync(f, "utf8").split(/\r?\n/)) {
+      const m = l.match(/^\s*([A-Za-z_]\w*)\s*=\s*(.*?)\s*$/);
+      if (m) dotenv[m[1]] = m[2].replace(/^(["'])(.*)\1$/, "$2");
+    }
+  }
+  return dotenv[k];
+}
+
+// What gets synthesised: everything here changes the take, so it is also the cache key
+function voSpec(id, line) {
+  const d = (tokensFor(id).audio || {}).vo || {};
+  const provider = line.provider || d.provider || "edge";
+  if (!line.text || !String(line.text).trim()) throw new Error(`voice-over line needs text: ${JSON.stringify(line)}`);
+  if (provider === "edge") return { provider, voice: line.voice || d.voice || "id-ID-ArdiNeural", rate: line.rate || d.rate || "+0%", text: line.text };
+  if (provider === "elevenlabs") {
+    const e = d.elevenlabs || {};
+    return { provider, voice: line.voice || e.voice || "JBFqnCBsd6RMkjVDRZzb", model: line.model || e.model || "eleven_multilingual_v2",
+      settings: { ...(e.settings || {}), ...(line.settings || {}) }, text: line.text };
+  }
+  throw new Error(`voice-over: unknown provider "${provider}" (edge | elevenlabs)`);
+}
+
+async function elevenlabs(spec, mp3) {
+  const key = env("ELEVENLABS_API_KEY");
+  if (!key) throw new Error("voice-over: provider elevenlabs needs ELEVENLABS_API_KEY (env, or .env in the repo root); provider edge is free");
+  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(spec.voice)}/with-timestamps?output_format=mp3_44100_128`, {
+    method: "POST", headers: { "xi-api-key": key, "content-type": "application/json" },
+    body: JSON.stringify({ text: spec.text, model_id: spec.model, ...(Object.keys(spec.settings).length ? { voice_settings: spec.settings } : {}) }),
+  });
+  if (!r.ok) throw new Error(`elevenlabs ${r.status}: ${(await r.text()).slice(0, 300)}`);
+  const j = await r.json();
+  fs.writeFileSync(mp3, Buffer.from(j.audio_base64, "base64"));
+  // Character alignment -> words
+  const a = j.alignment || {}, words = [];
+  let cur = null;
+  (a.characters || []).forEach((ch, i) => {
+    if (/\s/.test(ch)) { cur = null; return; }
+    if (!cur) words.push(cur = { w: "", t: a.character_start_times_seconds[i], end: 0 });
+    cur.w += ch;
+    cur.end = a.character_end_times_seconds[i];
+  });
+  return words.map(w => ({ w: w.w, t: +w.t.toFixed(3), d: +(w.end - w.t).toFixed(3) }));
+}
+
+// Where speech starts and stops inside the file (under -45 dB for 50 ms counts as silence)
+async function speechSpan(file) {
+  const dur = +(await run("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file])).out.trim();
+  const err = await ff(["-i", file, "-af", "silencedetect=n=-45dB:d=0.05", "-f", "null", "-"]);
+  const starts = [...err.matchAll(/silence_start: ([\d.]+)/g)].map(m => +m[1]);
+  const ends = [...err.matchAll(/silence_end: ([\d.]+)/g)].map(m => +m[1]);
+  const onset = starts.length && starts[0] < 0.01 && ends.length ? ends[0] : 0;
+  // ffmpeg closes a trailing silence at the end of the file, so a silence ending there is the tail
+  const k = starts.length - 1;
+  const end = k >= 0 && starts[k] > onset && (ends[k] == null || ends[k] >= dur - 0.02) ? starts[k] : dur;
+  return { dur: +dur.toFixed(3), onset: +onset.toFixed(3), end: +end.toFixed(3) };
+}
+
+export async function voTake(id, line) {
+  const spec = voSpec(id, line);
+  const hash = crypto.createHash("sha1").update(JSON.stringify(spec)).digest("hex").slice(0, 12);
+  const mp3 = path.join(VO_DIR, `${spec.provider}-${hash}.mp3`), meta = mp3.replace(/\.mp3$/, ".json");
+  if (!fs.existsSync(meta)) {
+    fs.mkdirSync(VO_DIR, { recursive: true });
+    let words;
+    if (spec.provider === "edge") {
+      const py = process.env.MS_PY || "python";
+      const { out } = await run(py, [path.join(ROOT, "core", "tts_edge.py"), spec.voice, spec.rate, mp3], spec.text)
+        .catch(e => { throw new Error(`voice-over (edge): ${e.message}  (pip install edge-tts, or set MS_PY)`); });
+      words = JSON.parse(out).words;
+    } else words = await elevenlabs(spec, mp3);
+    const span = await speechSpan(mp3);
+    // Edge reports word offsets about 0.1 s ahead of the audio: pin the first word to the measured onset
+    if (spec.provider === "edge" && words.length) {
+      const shift = span.onset - words[0].t;
+      words = words.map(w => ({ ...w, t: +(w.t + shift).toFixed(3) }));
+    }
+    fs.writeFileSync(meta, JSON.stringify({ spec, ...span, words }, null, 1));
+  }
+  return { file: mp3, ...JSON.parse(fs.readFileSync(meta, "utf8")) };
+}
+
+// A cue's time on the timeline: t, or a tween's start (its end with edge: "end"), plus offset
+function cueTime(c, tweens, what) {
+  let t = c.t;
+  if (c.at != null) {
+    const tw = tweens.find(x => x.id === c.at);
+    if (!tw) throw new Error(`${what}: no tween with id "${c.at}" (ms tweens lists them)`);
+    t = c.edge === "end" ? tw.start + tw.duration : tw.start;
+  }
+  if (typeof t !== "number") throw new Error(`${what} needs t or at: ${JSON.stringify(c)}`);
+  return t + (c.offset || 0);
+}
+
 // Resolve every cue to a file and a start time on the timeline
 export async function plan(id, info, tweens) {
   const a = info.audio;
-  if (!a || (!a.music && !(a.sfx || []).length)) return null;
+  if (!a || (!a.music && !(a.sfx || []).length && !(a.vo || []).length)) return null;
   const lead = (tokensFor(id).limits || {}).sfxLead ?? 0.033;
-  const events = (a.sfx || []).map(c => {
-    let t = c.t;
-    if (c.at != null) {
-      const tw = tweens.find(x => x.id === c.at);
-      if (!tw) throw new Error(`audio cue: no tween with id "${c.at}" (ms tweens lists them)`);
-      t = c.edge === "end" ? tw.start + tw.duration : tw.start;
-    }
-    if (typeof t !== "number") throw new Error(`audio cue needs t or at: ${JSON.stringify(c)}`);
-    return { c, t: t + (c.offset || 0) };
-  }).sort((x, y) => x.t - y.t);
+  const events = (a.sfx || []).map(c => ({ c, t: cueTime(c, tweens, "audio cue") })).sort((x, y) => x.t - y.t);
 
   const cues = [], used = {};
   for (const { c, t } of events) {
@@ -174,7 +275,22 @@ export async function plan(id, info, tweens) {
     if (!fs.existsSync(file)) throw new Error(`audio: no music file ${file}`);
     music = { file, from: m.from ?? "start", gain: m.gain ?? 0, fadeOut: m.fadeOut ?? (m.from === "end" ? 0 : 0.8) };
   }
-  return { duration: info.duration, cues, music };
+  const vo = [], warnings = [];
+  for (const l of a.vo || []) {
+    const t = cueTime(l, tweens, "voice-over line");
+    const take = await voTake(id, l);
+    const start = t - take.onset;
+    vo.push({ text: l.text, provider: take.spec.provider, voice: take.spec.voice, event: +t.toFixed(3),
+      start: +Math.max(0, start).toFixed(3), trim: +Math.max(0, -start).toFixed(3), gain: l.gain ?? 0, file: take.file,
+      until: +(start + take.end).toFixed(3), words: take.words.map(w => ({ w: w.w, t: +(start + w.t).toFixed(3) })) });
+  }
+  vo.sort((x, y) => x.event - y.event);
+  vo.forEach((v, i) => {
+    const next = vo[i + 1];
+    if (next && v.until > next.event) warnings.push(`vo "${v.text.slice(0, 32)}" runs to ${v.until}s, over the next line at ${next.event}s`);
+    if (v.until > info.duration) warnings.push(`vo "${v.text.slice(0, 32)}" runs to ${v.until}s, past the end (${info.duration}s)`);
+  });
+  return { duration: info.duration, cues, music, vo, warnings, duck: ((tokensFor(id).audio || {}).vo || {}).duck ?? 3 };
 }
 
 const num = v => Number(v).toFixed(3);
@@ -203,6 +319,23 @@ export async function mix(id, p) {
     chains.push(`[${n}:a]${trim}${fmt},volume=${c.gain}dB,adelay=${ms}:all=1[s${k}]`);
     labels.push(`[s${k}]`);
   });
+  const vo = p.vo || [];
+  if (vo.length) {
+    vo.forEach((v, k) => {
+      const n = inputs.filter(x => x === "-i").length;
+      inputs.push("-i", v.file);
+      const trim = v.trim ? `atrim=start=${num(v.trim)},asetpts=PTS-STARTPTS,` : "";
+      chains.push(`[${n}:a]${trim}${fmt},volume=${v.gain}dB,adelay=${Math.round(v.start * 1000)}:all=1[v${k}]`);
+    });
+    const vl = vo.map((_, k) => `[v${k}]`).join("");
+    chains.push(vo.length > 1 ? `${vl}amix=inputs=${vo.length}:normalize=0:duration=longest[vo]` : `${vl}anull[vo]`);
+    // Duck the music under the voice: the voice keys a compressor on the bed (MOTION.md audio.vo.duck = ratio, 0 = off)
+    if (p.music && p.duck) {
+      chains.push("[vo]asplit=2[vo1][vkey]", `[m][vkey]sidechaincompress=threshold=0.05:ratio=${p.duck}:attack=25:release=450[md]`);
+      labels[0] = "[md]";
+      labels.push("[vo1]");
+    } else labels.push("[vo]");
+  }
   const graph = [...chains, `${labels.join("")}amix=inputs=${labels.length}:normalize=0:duration=longest,apad=whole_dur=${num(p.duration)},atrim=0:${num(p.duration)}[mix]`].join(";");
   await ff([...inputs, "-filter_complex", graph, "-map", "[mix]", "-c:a", "pcm_s24le", pre]);
 

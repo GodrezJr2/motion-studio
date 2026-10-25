@@ -46,6 +46,6 @@ export async function render(id, { fps, scale = 1, out, crf = 16, from = 0, to, 
       await mux(video, mixed.file, file);
       fs.rmSync(video, { force: true });
     }
-    return { file, audio: mixed && { ...mixed, cues: sound.cues }, frames: count, fps, width: Math.round(info.width * scale), height: Math.round(info.height * scale) };
+    return { file, audio: mixed && { ...mixed, cues: sound.cues, vo: sound.vo, warnings: sound.warnings }, frames: count, fps, width: Math.round(info.width * scale), height: Math.round(info.height * scale) };
   }, { scale });
 }

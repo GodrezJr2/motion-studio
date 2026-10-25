@@ -9,6 +9,7 @@
 //   ms frame <scene> <t> [--scale]  one still at time t (.ms/frame-<t>.png)
 //   ms render <scene> [--fps 60] [--no-audio]   MP4 from the same timeline, with the scene's sound (.ms/<scene>.mp4)
 //   ms audio <scene>                cue sheet + mixed, loudness-normalised wav only (.ms/<scene>.wav)
+//   ms vo <scene>                   synthesise the voice-over lines; print each line's span and word timings
 //   ms tweens <scene>               the timeline as a table (#index, start, duration, ease, targets, source line)
 //   ms edit <scene> <tween> [--dur 0.6] [--ease ms.out] [--at 1.2] [--shift 0.1] [--stagger 0.05] [--id name] [--dry]
 //                                   rewrite one tween's call (tween = id, scene.js:12:4 or #index from ms tweens)
@@ -136,7 +137,17 @@ async function main() {
     case "audio": {
       const p = await withScene(need(scene), async ({ page, info }) => plan(scene, info, await page.evaluate(() => MS.tweens())));
       if (!p) { console.log("no audio in MS.register(tl, { audio: { music, sfx } })"); break; }
-      printAudio({ ...(await mix(scene, p)), cues: p.cues });
+      printAudio({ ...(await mix(scene, p)), cues: p.cues, vo: p.vo, warnings: p.warnings });
+      break;
+    }
+    case "vo": {
+      const p = await withScene(need(scene), async ({ page, info }) => plan(scene, info, await page.evaluate(() => MS.tweens())));
+      if (!p || !p.vo.length) { console.log("no voice-over in MS.register(tl, { audio: { vo: [{ t, text }] } })"); break; }
+      for (const v of p.vo) {
+        console.log(`${fmtT(v.event)} -> ${fmtT(v.until)}  ${v.provider}:${v.voice}  "${v.text}"`);
+        console.log("        " + v.words.map(w => `${w.w}@${w.t.toFixed(2)}`).join(" "));
+      }
+      for (const w of p.warnings) console.log("  warn  " + w);
       break;
     }
     case "tweens": {
@@ -248,6 +259,8 @@ async function main() {
 
 function printAudio(a) {
   for (const c of a.cues) console.log(`  ${fmtT(c.start)}  ${c.sound.padEnd(10)} for event at ${c.event}s  ${c.gain}dB`);
+  for (const v of a.vo || []) console.log(`  ${fmtT(v.event)}  vo ${v.provider}:${v.voice} to ${v.until}s  "${v.text.slice(0, 48)}"`);
+  for (const w of a.warnings || []) console.log("  warn  " + w);
   const ok = Math.abs(a.lufs - a.target.lufs) <= 1 && a.truePeak <= a.target.truePeak + 0.1;
   // Sparse cues with no music cannot reach the loudness target without passing the peak ceiling: say so, not "off"
   const peakBound = !ok && a.lufs < a.target.lufs && a.truePeak >= a.target.truePeak - 0.3;

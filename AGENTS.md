@@ -179,6 +179,23 @@ skip). Check what you cannot hear: `.venv/Scripts/python.exe -m earshot timeline
 The studio's Sounds tab auditions every role. Music comes from the user; never claim a mix sounds good without saying it
 was only measured, not heard.
 
+Voice-over sits on the same timeline: `audio: { vo: [{ at: "<tween id>" | t: 0.3, text: "Satu garis untuk semua
+trip.", voice?, gain?, provider? }] }`. Speech starts on the cue (the take's leading silence is measured and
+skipped). Defaults come from MOTION.md `audio.vo`:
+
+- `provider: edge` (default): free Microsoft Edge read-aloud voices via `pip install edge-tts`, good for drafts and
+  timing. Indonesian: `id-ID-ArdiNeural`, `id-ID-GadisNeural`; `python -m edge_tts -l` lists the rest.
+- `provider: elevenlabs`: paid. Needs `ELEVENLABS_API_KEY` in the env or in `.env` at the repo root (gitignored).
+  Voice id and model under `audio.vo.elevenlabs`. Ask the user before switching a piece to it: every new or
+  changed line costs credits.
+
+Takes are cached in `sounds/vo/` by provider + voice + model + text, so an unchanged line is never synthesised (or
+paid for) twice. Music ducks under the voice with a sidechain compressor (`audio.vo.duck`, the ratio; 3 measured
+about 6 dB under an edge voice; 0 = off). `ms vo <scene>` synthesises the lines and prints each one's span and word
+timings: write the line first, then fit the picture to it (land a reveal on the word, not the word on the reveal).
+It warns when a line runs into the next one or past the end. Write lines short (one idea, 6-10 words) and read the
+numbers aloud as words if the voice stumbles on them.
+
 Music, the way the strongest published launch-film prompts do it:
 
 - One licensed track (Mixkit, Pixabay, CC0/CC BY; raw files in `scenes/<id>/audio/raw/`, never committed) at about

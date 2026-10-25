@@ -48,6 +48,12 @@ audio:
   lufs: -14
   truePeak: -1
   kit: crisp # earshot kit: crisp (product, dev-tool) | calm | minimal | launch (cut to music); sfx name kit roles
+  vo: # voice-over lines: audio.vo [{ t | at, text, voice?, gain?, provider? }]
+    provider: edge # edge = free Edge voices, for drafts | elevenlabs = paid, needs ELEVENLABS_API_KEY
+    voice: id-ID-ArdiNeural # edge voice (id-ID-GadisNeural, en-US-AndrewMultilingualNeural, ...: python -m edge_tts -l)
+    rate: "+0%"
+    elevenlabs: { voice: JBFqnCBsd6RMkjVDRZzb, model: eleven_multilingual_v2 } # voice id from the ElevenLabs voice library
+    duck: 3 # music ducks under the voice: sidechain ratio (3 = about 6 dB under an edge voice, measured); 0 = off
 
 critic:
   axes: [idea, motion, type, layout, finish]

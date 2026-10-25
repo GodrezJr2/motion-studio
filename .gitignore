@@ -5,3 +5,5 @@ refs/
 scenes/*/.ms/
 NOTES.md
 scenes/*/audio/raw/
+.env
+sounds/vo/
