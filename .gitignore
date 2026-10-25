@@ -7,3 +7,10 @@ NOTES.md
 scenes/*/audio/raw/
 .env
 sounds/vo/
+
+# Engine only. Your scenes, renders and assets stay on your machine:
+# the repo keeps the starter example and the lint fixture, nothing else.
+scenes/*
+!scenes/demo-hero/
+!scenes/lint-fixture/
+media/

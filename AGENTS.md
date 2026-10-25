@@ -16,6 +16,10 @@ language). Put the brief in `scenes/<id>/brief.md`: kind, audience, feel, the on
 
 ## Scene format
 
+This repo is the engine. Scenes and renders are the user's work and stay local: `scenes/*` and `media/` are
+gitignored except `scenes/demo-hero` (starter) and `scenes/lint-fixture`. Never `git add -f` a scene, a render or a
+client's screenshots; client work (ads for a private product) must never reach this public repo.
+
 `scenes/<id>/index.html` loads `/vendor/gsap/gsap.min.js`, `/vendor/gsap/CustomEase.min.js`, `tokens.js` (served
 virtually from MOTION.md), `/core/runtime.js`, then the scene script, which builds **one** GSAP timeline and calls
 `MS.register(tl, { width, height, fps, kind })`. `kind` is `"web"` (plays then rests), `"film"` or `"ad"` (end-hold

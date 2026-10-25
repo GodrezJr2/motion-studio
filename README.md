@@ -11,26 +11,11 @@ One prompt in. A linted, judged, sound-designed MP4 out, and every frame checked
 ![Node 18+](https://img.shields.io/badge/node-18%2B-2f73c0)
 ![Works with Claude Code, Codex, Gemini CLI, OpenCode](https://img.shields.io/badge/agents-Claude%20Code%20·%20Codex%20·%20Gemini%20·%20OpenCode-2f73c0)
 
-[![Motion Studio, 20 s promo](media/promo.gif)](media/promo.mp4)
-
-*This promo was made in the studio, by an agent, from one brief (`scenes/ms-promo`). Sound on: [promo.mp4](media/promo.mp4).*
-
 </div>
 
-## Made with it
-
-<table>
-<tr>
-<td width="50%"><a href="media/j5-promo.mp4"><img src="media/j5-promo.gif" alt="J5 EV Dashboard promo"></a></td>
-<td width="50%"><a href="media/motion-studio.mp4"><img src="media/walkthrough.gif" alt="Motion Studio walkthrough"></a></td>
-</tr>
-<tr>
-<td><b>A product promo</b>: the same cut on a real app, <a href="https://github.com/GodrezJr2/j5-ev-dashboard">J5 EV Dashboard</a>. Real UI captured from its demo mode, receipt figures from its README. 20 s, <a href="media/j5-promo.mp4">mp4 with sound</a> · <code>scenes/j5-promo</code></td>
-<td><b>The walkthrough</b>: 41 s tour of the studio, with a real note, the agent's real reply and the real diff. <a href="media/motion-studio.mp4">mp4</a> · <code>scenes/ms-readme</code></td>
-</tr>
-</table>
-
 Every scene is a folder you can open, scrub and remix: `node bin/ms.mjs serve`, then pick it on the home page.
+The repo ships the engine, one starter scene (`scenes/demo-hero`) and the lint fixture; your own scenes and renders
+stay on your machine (`scenes/*` and `media/` are gitignored).
 
 ---
 
