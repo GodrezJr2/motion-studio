@@ -17,6 +17,31 @@ Every scene is a folder you can open, scrub and remix: `node bin/ms.mjs serve`, 
 The repo ships the engine, one starter scene (`scenes/demo-hero`) and the lint fixture; your own scenes and renders
 stay on your machine (`scenes/*` and `media/` are gitignored).
 
+## Examples
+
+Three 9:16 pieces an agent built in the studio from a brief, with an Indonesian voice-over and sound. Each preview
+loops eight silent seconds; click it for the full video with sound. Their scene sources are not in this repo.
+
+<table>
+<tr>
+<td align="center" width="33%">
+<a href="https://github.com/user-attachments/assets/c370c834-a759-4f76-a8a9-ef66622e49da"><img src="docs/examples/langit.webp" width="240" alt="Langit: a spectrum chart asking why the sky is not violet, then the sun over the horizon"></a><br>
+<b>Langit</b><br>
+<sub>A 43 s science explainer: why the sky is blue (Rayleigh scattering).</sub>
+</td>
+<td align="center" width="33%">
+<a href="https://github.com/user-attachments/assets/938eda6b-9cf6-43a7-afad-3513d7666bd9"><img src="docs/examples/hening.webp" width="240" alt="Hening: a typed command, then glass notification cards sorting into four decks over blue silk light"></a><br>
+<b>Hening</b><br>
+<sub>A 55 s ad for a made-up focus app: WebGL silk light behind glass cards.</sub>
+</td>
+<td align="center" width="33%">
+<a href="https://github.com/user-attachments/assets/a942be88-8028-4dc7-a3fc-ee1eedecff85"><img src="docs/examples/lintasi.webp" width="240" alt="Lintasi: a late-truck message from a customer, a leaking margin bucket, then the title"></a><br>
+<b>Lintasi</b><br>
+<sub>A 22 s ad for a trip-tracking app for truck brokerages, on demo data.</sub>
+</td>
+</tr>
+</table>
+
 ---
 
 An agent can write a GSAP timeline. What it cannot do is see whether the result teleports, stops dead or strobes.
@@ -153,8 +178,8 @@ AGENTS.md         the guide every coding agent reads
 
 Built on [GSAP](https://gsap.com) and Playwright with system Chrome; sound by
 [earshot](https://github.com/Leonxlnx/earshot) (MIT); HyperFrames compositions supported through `ms import`.
-The two promos use music and effects from [Mixkit](https://mixkit.co) ("Cat Walk" by Arulo; free licence, files
-not included: `scenes/<id>/audio/README.md` lists them).
+The examples use music from [Mixkit](https://mixkit.co) under its free licence (#726 in Langit, "Your Breath" in
+Hening, "Close Up" in Lintasi; the files are not included) and draft voices from edge-tts.
 
 ## Star history
 
@@ -167,5 +192,5 @@ not included: `scenes/<id>/audio/README.md` lists them).
 
 ## License
 
-[MIT](LICENSE). GSAP is loaded from npm under its own license; sound comes from earshot (MIT). The J5 EV Dashboard
-example shows a separate project; its UI and car render belong to that repo.
+[MIT](LICENSE). GSAP is loaded from npm under its own license; sound comes from earshot (MIT). The example videos
+are not covered by the MIT license: Hening is a made-up product, and Lintasi's screens show demo data.
