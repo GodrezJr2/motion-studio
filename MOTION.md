@@ -28,6 +28,7 @@ paces:
 
 limits:
   maxPxPerFrame: 25 # visible, unblurred move above this strobes
+  blurredPxScale: 3 # with render.blur on, a move may go this many times faster before it strobes
   overshoot: 0.07 # max overshoot past rest, as a share of the travel, and only on a true landing
   textOvershoot: 0.005 # type never overshoots
   maxLandings: 2 # moves that overshoot at all, per piece
@@ -36,6 +37,10 @@ limits:
   maxIdle: 1.2 # seconds with nothing moving, mid-piece (dead time)
   endHold: [0.6, 1.4] # films: last motion to last frame
   sfxLead: 0.033 # sound leads its picture event by 2 frames
+
+render: # ms render defaults; a scene's MOTION.md or --blur / --shutter override
+  blur: 0 # motion blur: subframes averaged per frame (8 = smooth whips, 0 = off). Render time grows with it
+  shutter: 180 # degrees of the frame the shutter is open (180 = film look; 360 = longest smear)
 
 formats: # ms new --format; re-lay out for each, never crop 16:9 to vertical
   "16:9": [1920, 1080]
@@ -99,7 +104,9 @@ Read this before writing any frame. The front matter is the machine part: lint f
   Two moves that each ease to rest and then restart read as stall-then-lurch.
 - **One hero motion plus at most two supporting ones** at any moment. Stillness after motion is a tool.
 - **Speed limit**: past 25 px per frame an unblurred move strobes (`strobe`). A fast whip reads best next to
-  something almost still.
+  something almost still. With motion blur on (`render: { blur: 8 }` in a scene's MOTION.md, or `ms render --blur 8`)
+  every frame averages subframes across a 180-degree shutter, the way After Effects does, and whips, snaps and
+  bursts up to 3x faster read as smears instead of strobes. Ads cut to music usually want it on.
 - **Springs and overshoot belong to a true landing only**: an object reaching a surface or a lock, a contact you
   could put a sound on. 1-7% of the travel, at most two per piece. Cards, labels, chips and the camera never
   overshoot. **Type never overshoots** (`text-overshoot`).

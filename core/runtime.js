@@ -110,7 +110,8 @@
   // What the viewer sees: opacity multiplies down from every ancestor, and visibility:hidden is 0. A child of a
   // shot that fades out is gone too, so its last move is a cut, not a hard stop.
   function seenOpacity(el) {
-    if (getComputedStyle(el).visibility === "hidden") return 0;
+    // display:none (a typed char not typed yet) has no box: unseen, not at 0,0
+    if (getComputedStyle(el).visibility === "hidden" || !el.getClientRects().length) return 0;
     let o = 1;
     for (let n = el; n && n.nodeType === 1; n = n.parentElement) o *= +getComputedStyle(n).opacity;
     return o;

@@ -9,6 +9,7 @@ import os from "node:os";
 import { withScene, outDir } from "./session.mjs";
 import { plan, mix, mux } from "./audio.mjs";
 import { encoder } from "./gpu.mjs";
+import { tokensFor } from "./tokens.mjs";
 
 // Pages capturing at once: MS_WORKERS or --workers; 4 by default, fewer on a small machine
 const defaultWorkers = () => +process.env.MS_WORKERS || Math.max(1, Math.min(4, Math.floor(os.cpus().length / 4)));
@@ -35,16 +36,43 @@ async function clonePage(page, scale) {
   return p;
 }
 
-export async function render(id, { fps, scale = 1, out, crf = 16, from = 0, to, audio = true, encoder: want, workers, onProgress } = {}) {
+// Motion blur: each output frame is the average of `blur` subframes spread across the open shutter (180 degrees =
+// half a frame), centred on the frame's time like After Effects' default phase. ffmpeg's tmix averages each run of
+// subframes and select keeps the last frame of every run. Frames where nothing moves are captured once and
+// repeated, so the cost lands only where the blur shows.
+function blurFilter(n, fps) {
+  return n > 1 ? `tmix=frames=${n},select='eq(mod(n\\,${n})\\,${n - 1})',setpts=N/(${fps}*TB),` : "";
+}
+
+const movingAt = (spans, t0, t1) => spans.some(([a, b]) => a < t1 && b > t0);
+
+// A subframe never crosses an instant set (a hard cut, a swap): After Effects does not smear one shot into the next
+function sameSide(cuts, t, s) {
+  for (const c of cuts) {
+    if (s < t && s < c && c <= t) s = c;
+    else if (s > t && t < c && c <= s) s = c - 1e-4;
+  }
+  return s;
+}
+
+export async function render(id, { fps, scale = 1, out, crf = 16, from = 0, to, audio = true, encoder: want, workers, blur, shutter, onProgress } = {}) {
   // GPU encoder when the machine has one (core/gpu.mjs), libx264 otherwise
   const enc = encoder(want);
+  const r = tokensFor(id).render || {};
+  blur = Math.max(1, Math.round(blur ?? r.blur ?? 0));
+  shutter = shutter ?? r.shutter ?? 180;
   return withScene(id, async ({ page, info }) => {
     fps = fps || info.fps || 60;
     const end = Math.min(to ?? info.duration, info.duration);
     const count = Math.max(1, Math.round((end - from) * fps)) + 1;
     const file = out || path.join(outDir(id), `${id}.mp4`);
     // Sound only for a full render: a partial one would cut cues and the back-timed music
-    const sound = audio && from === 0 && end === info.duration ? await plan(id, info, await page.evaluate(() => MS.tweens())) : null;
+    const tweens = await page.evaluate(() => MS.tweens());
+    const sound = audio && from === 0 && end === info.duration ? await plan(id, info, tweens) : null;
+    // Where something moves: tween spans, repeats included. Instant sets do not count
+    const spans = tweens.filter(t => t.duration > 0).map(t => [t.start, t.start + (t.repeat < 0 ? 1e9 : t.duration * (t.repeat + 1))]);
+    const open = shutter / 360 / fps;
+    const cuts = tweens.filter(t => t.duration === 0).map(t => t.start);
     const video = sound ? file.replace(/\.mp4$/, ".video.mp4") : file;
 
     // Contiguous stretches of at least 2 s each, so every segment starts on a keyframe of its own
@@ -60,16 +88,26 @@ export async function render(id, { fps, scale = 1, out, crf = 16, from = 0, to, 
     await Promise.all(parts.map(async ([a, b], k) => {
       const p = pages[k];
       const ff = ffmpeg([
-        "-f", "image2pipe", "-framerate", String(fps), "-c:v", "png", "-i", "-",
+        "-f", "image2pipe", "-framerate", String(fps * blur), "-c:v", "png", "-i", "-",
         "-c:v", enc.codec, ...enc.args(crf), "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         // Even dimensions for yuv420p
-        "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", segs[k],
+        "-vf", blurFilter(blur, fps) + "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-r", String(fps), segs[k],
       ]);
       const cdp = await p.context().newCDPSession(p);
-      for (let i = a; i < b; i++) {
-        await p.evaluate(t => MS.seek(t), Math.min(from + i / fps, end));
+      const shot = async t => {
+        await p.evaluate(x => MS.seek(x), t);
         const { data } = await cdp.send("Page.captureScreenshot", { format: "png", optimizeForSpeed: true, clip, captureBeyondViewport: true });
-        if (!ff.stdin.write(Buffer.from(data, "base64"))) await new Promise(r => ff.stdin.once("drain", r));
+        return Buffer.from(data, "base64");
+      };
+      const write = async buf => { if (!ff.stdin.write(buf)) await new Promise(r => ff.stdin.once("drain", r)); };
+      for (let i = a; i < b; i++) {
+        const t = Math.min(from + i / fps, end);
+        if (blur > 1 && movingAt(spans, t - open / 2, t + open / 2)) {
+          for (let s = 0; s < blur; s++) await write(await shot(sameSide(cuts, t, Math.max(0, Math.min(end, t + open * ((s + 0.5) / blur - 0.5))))));
+        } else {
+          const buf = await shot(t);
+          for (let s = 0; s < blur; s++) await write(buf);
+        }
         onProgress && onProgress(++captured, count);
       }
       ff.stdin.end();
@@ -89,6 +127,6 @@ export async function render(id, { fps, scale = 1, out, crf = 16, from = 0, to, 
       await mux(video, mixed.file, file);
       fs.rmSync(video, { force: true });
     }
-    return { file, encoder: enc.name, workers: parts.length, audio: mixed && { ...mixed, cues: sound.cues, vo: sound.vo, warnings: sound.warnings }, frames: count, fps, width: Math.round(info.width * scale), height: Math.round(info.height * scale) };
+    return { file, encoder: enc.name, workers: parts.length, blur: blur > 1 ? { samples: blur, shutter } : null, audio: mixed && { ...mixed, cues: sound.cues, vo: sound.vo, warnings: sound.warnings }, frames: count, fps, width: Math.round(info.width * scale), height: Math.round(info.height * scale) };
   }, { scale });
 }

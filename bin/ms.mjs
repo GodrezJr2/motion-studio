@@ -7,7 +7,7 @@
 //   ms lint <scene> [--json]        sample curves + real playback, print issues (writes .ms/report.json)
 //   ms sheet <scene> [--frames N]   contact sheet PNG: stills + velocity curves + issues (.ms/sheet.png)
 //   ms frame <scene> <t> [--scale]  one still at time t (.ms/frame-<t>.png)
-//   ms render <scene> [--fps 60] [--no-audio] [--encoder auto|nvenc|qsv|amf|cpu] [--workers 4]   MP4 from the same timeline, with
+//   ms render <scene> [--fps 60] [--blur 8] [--shutter 180] [--no-audio] [--encoder auto|nvenc|qsv|amf|cpu] [--workers 4]   MP4 from the same timeline, with
 //                                   the scene's sound (.ms/<scene>.mp4); GPU encoder first, libx264 as fallback
 //   ms audio <scene>                cue sheet + mixed, loudness-normalised wav only (.ms/<scene>.wav)
 //   ms vo <scene>                   synthesise the voice-over lines; print each line's span and word timings
@@ -30,6 +30,10 @@
 //   ms refs <scene> --pull "<query>"             best refs (+ images) into .ms/refs/refs.md for builder and critic
 //   ms capture <url> [--clip 6] [--note ""] [--scene s] [--no-push]   screenshot (+ scroll clip) a site to refs/,
 //                                                saved back to the library (the inbox)
+//   ms study <url|file> [--slug s] [--scene <id>]   a reference to learn from: download (yt-dlp), cuts, motion energy,
+//                                                frames -> refs/study/<slug>/sheet.png + study.md; --scene starts a remake
+//   ms compare <scene> [--study slug]            the scene's render vs its reference: match score (rhythm, cuts,
+//                                                length), side-by-side .ms/compare.mp4 and .ms/compare.png
 import fs from "node:fs";
 import path from "node:path";
 import { startServer, listScenes, readNotes, writeNotes } from "../core/server.mjs";
@@ -45,6 +49,7 @@ import { importComposition } from "../core/importer.mjs";
 import { packet, runCritic, parseVerdict, record, readReview } from "../core/critic.mjs";
 import { tokensFor } from "../core/tokens.mjs";
 import { pick } from "../core/agents.mjs";
+import { study, compare } from "../core/study.mjs";
 
 const str = v => typeof v === "string" ? v : undefined; // a bare --flag parses as true
 
@@ -129,9 +134,10 @@ async function main() {
       let last = -1;
       const r = await render(need(scene), {
         fps: flags.fps && +flags.fps, scale: +(flags.scale || 1), out: flags.out, audio: !flags["no-audio"], encoder: flags.encoder, workers: flags.workers && +flags.workers,
+        blur: flags.blur != null ? +flags.blur : undefined, shutter: flags.shutter && +flags.shutter,
         onProgress: (i, n) => { const p = Math.floor(i / n * 10); if (p !== last) { last = p; process.stdout.write(`\rrender ${i}/${n}`); } },
       });
-      console.log(`\r${rel(r.file)}  ${r.frames} frames @ ${r.fps}fps  ${r.width}x${r.height}  ${r.encoder} x${r.workers}`);
+      console.log(`\r${rel(r.file)}  ${r.frames} frames @ ${r.fps}fps  ${r.width}x${r.height}  ${r.encoder} x${r.workers}${r.blur ? `  motion blur ${r.blur.samples} @ ${r.blur.shutter}deg` : ""}`);
       if (r.audio) printAudio(r.audio);
       break;
     }
@@ -245,6 +251,27 @@ async function main() {
         scene: typeof flags.scene === "string" ? flags.scene : undefined, push: !flags["no-push"] });
       console.log(`${rel(m.shot)}${m.video ? `  ${rel(m.video)}` : ""}`);
       if (m.library) console.log(m.library.id ? `library  ref #${m.library.id}${m.library.merged ? " (merged)" : ""}, in the library inbox` : `library  ${m.library.error}`);
+      break;
+    }
+    case "study": {
+      if (!scene) throw new Error("usage: ms study <url|file> [--slug s] [--scene <id>]");
+      const r = await study(scene, { slug: str(flags.slug), scene: str(flags.scene), threshold: flags.threshold && +flags.threshold });
+      const d = r.data;
+      console.log(`${d.slug}  ${d.duration}s ${d.width}x${d.height} @ ${d.fps}fps  format ${d.format}  ${d.shots.length} shots`);
+      d.shots.forEach(([a, b], i) => console.log(`  shot ${String(i + 1).padStart(2)}  ${fmtT(a)} +${(b - a).toFixed(2)}s`));
+      console.log(`sheet  ${rel(r.sheet)}
+notes  ${rel(r.md)}`);
+      if (r.scene) console.log(`remake ${rel(r.scene.dir)}  (ref.json -> ${d.slug}; ms compare ${str(flags.scene)} after a render)`);
+      break;
+    }
+    case "compare": {
+      const r = await compare(need(scene), { slug: str(flags.study), video: str(flags.video), threshold: flags.threshold && +flags.threshold });
+      console.log(`${scene} vs ${r.study}  match ${r.score}/100  rhythm ${r.rhythm}  cuts ${r.cuts.hits}/${r.cuts.ref.length} (f1 ${r.cuts.f1.toFixed(2)})  length ${r.length}`);
+      if (r.cuts.offsets.length) console.log(`  cut offsets (remake - ref): ${r.cuts.offsets.map(o => (o > 0 ? "+" : "") + o.toFixed(2)).join(" ")}`);
+      console.log(`  ref cuts   ${r.cuts.ref.map(t => t.toFixed(2)).join(" ")}
+  your cuts  ${r.cuts.mine.map(t => t.toFixed(2)).join(" ")}`);
+      console.log(`sheet  ${rel(r.sheet)}
+video  ${rel(r.video)}`);
       break;
     }
     case "review": {

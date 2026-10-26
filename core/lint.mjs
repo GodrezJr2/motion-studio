@@ -44,6 +44,8 @@ export function lint(sample, tweens = [], gaps = null, { tokens = {}, info = {} 
   const { fps, frames, names, viewport } = sample;
   const roles = sample.roles || [];
   const L = { ...LIMITS, ...(tokens.limits || {}) };
+  // Rendered with motion blur, a fast move smears instead of strobing: the speed limit grows by limits.blurredPxScale
+  if ((tokens.render || {}).blur > 1) L.maxPxPerFrame *= L.blurredPxScale || 3;
   const film = /^(film|ad)$/.test(info.kind || "");
   let landings = 0;
   const dt = 1 / fps;
@@ -109,7 +111,9 @@ export function lint(sample, tweens = [], gaps = null, { tokens = {}, info = {} 
         }
 
         // Teleport: the whole move happens between two frames
-        if (vel.length <= 1 && ch !== "opacity" && (ch !== "x" && ch !== "y" || travel > diag * 0.05)) {
+        // A jump made while unseen (opacity 0 on either side, a cut, a typed char appearing) is not seen as one
+        const unseen = frames[a][e][4] < 0.01 || frames[b][e][4] < 0.01;
+        if (vel.length <= 1 && !unseen && ch !== "opacity" && (ch !== "x" && ch !== "y" || travel > diag * 0.05)) {
           add("error", "teleport", name, t0, t1, `${ch} jumps ${r2(travel)}${UNIT[ch]} in one frame`, "Give it a duration (0.2-0.5s) or hide the jump behind opacity 0.");
           continue;
         }

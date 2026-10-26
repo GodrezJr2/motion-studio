@@ -33,6 +33,27 @@ and beat rules apply). Rules:
 - Fonts: wait-free (`display=block` or local), otherwise the first frames render in a fallback font.
 - Add `id` to a tween (`{ id: "dot-travel" }`) when a note is likely to point at it; it shows in `ms tweens`.
 
+## Moves (presets)
+
+`core/moves.js` is the studio's After Effects preset library. Load it after runtime.js
+(`<script src="/core/moves.js"></script>`) and place proven moves instead of re-deriving them; each returns a GSAP
+timeline on the house eases, seek-safe:
+
+```js
+MS.build(() => {                       // waits for fonts: moves measure text and layout
+  const tl = gsap.timeline();
+  tl.add(MS.moves.wordSwap("#box", ["Inspirations", "Motion", "All You Need"], { bg: "#fff" }), 5.1)
+    .add(MS.moves.cameraPush("#world", "#word", { scale: 3.6 }), 8.3)
+    .add(MS.moves.cuts(".shot", [5.07, 7.2, 3.03]), 0);
+  MS.register(tl, { width: 1920, height: 1080, fps: 30, kind: "ad" });
+});
+```
+
+snapScale, wipeReveal, maskUp, typeOn (caret), wordSwap (box follows the word), cameraPush / cameraReset (bring a
+target or a point to the frame centre), cardBurst, masonryRise, cursorTo + click, modalIn, toast, blurIn, cuts
+(staccato hard cuts), drift. Helpers: `MS.split`, `MS.rand(seed)` (seeded, never Math.random), `MS.centre`.
+A move harvested from a studied reference is added here, not left in one scene.
+
 ## The loop
 
 ```
@@ -157,6 +178,19 @@ node bin/ms.mjs refs <scene> --pull "<query>"           # best matches -> .ms/re
 node bin/ms.mjs capture <url> [--clip 4] [--note "..."] [--scene <id>]   # still + scroll clip -> refs/<slug>/, to the library inbox
 ```
 
+### Study a reference (remake loop)
+
+```
+node bin/ms.mjs study <tiktok|youtube url|file> [--slug s] [--scene <id>]  # -> refs/study/<slug>/: source.mp4, frames, sheet.png, study.json, study.md
+node bin/ms.mjs compare <scene> [--study slug]                            # remake vs reference: .ms/compare.png, compare.mp4 (side by side), score
+```
+
+`study` downloads the piece (yt-dlp), finds the hard cuts and the motion-energy curve (the rhythm), grabs frames and
+writes a contact sheet; fill `study.md` with a beat table (time, what happens, which move) and what makes it good.
+`--scene` starts a remake in the reference's format with `ref.json` pointing at the study. `compare` needs a render
+and scores 0.45 rhythm (energy correlation) + 0.4 cuts within 0.2 s + 0.15 length; look at its frame pairs, fix the
+biggest gap, render, compare again. Third-party pieces and remakes stay local (`refs/` and scenes are gitignored).
+
 Pull refs before building a new piece and look at the images: they set the bar for detail and finish, they are not
 layouts to copy. Needs MC_URL + MC_TOKEN or `~/.memory-core.json`.
 
@@ -230,3 +264,8 @@ Capture, not encoding, is the slow part (about 50 ms a frame), so render splits 
 segments without re-encoding: a 22 s 9:16 ad went from 71 s to 43 s, identical frame for frame. The studio's render
 button and `ms make` use the same defaults. This only holds while seeking is deterministic: never let two tweens
 write the same property of the same element at the same time (lint `overlap`).
+
+Motion blur: `--blur 8` (or `render: { blur: 8 }` in the scene's MOTION.md) averages 8 subframes per frame across a
+`--shutter 180` degree shutter, like After Effects. Still frames are captured once; subframes never cross an instant
+set, so hard cuts stay clean. Lint then allows moves `limits.blurredPxScale` (3x) faster before `strobe`. Ads with
+whips, snaps and bursts want it on; it multiplies capture time only where something moves.

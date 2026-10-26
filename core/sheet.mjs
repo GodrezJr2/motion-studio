@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { withScene, outDir, stills } from "./session.mjs";
 import { lint } from "./lint.mjs";
+import { tokensFor } from "./tokens.mjs";
 
 const W = 1600, PAD = 40, LABEL = 190;
 const PLOT = W - PAD * 2 - LABEL;
@@ -108,7 +109,8 @@ export async function sheet(id, { frames = 8, fps = 60, perf = true } = {}) {
     const tweens = await page.evaluate(() => MS.tweens());
     const sample = await page.evaluate(f => MS.sample(f), fps);
     const gaps = perf ? await page.evaluate(() => MS.measure()) : null;
-    const result = lint(sample, tweens, gaps);
+    // Same tokens as ms lint, so the sheet judges against the scene's own limits (blur, pace)
+    const result = lint(sample, tweens, gaps, { tokens: tokensFor(id), info });
     const report = { scene: id, at: new Date().toISOString(), info, errors, tweens, ...result };
     const dur = sample.duration;
     const times = Array.from({ length: frames }, (_, i) => +(dur * i / (frames - 1)).toFixed(3));
