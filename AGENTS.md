@@ -74,7 +74,12 @@ the whole timeline and only the content changes:
 node bin/ms.mjs template save <scene> <name> [--about "..."]   # copy the scene (no renders, notes or audio)
 node bin/ms.mjs template list                                  # name, slot counts, where it came from
 node bin/ms.mjs new <id> --template <name> [--fill my.json]    # a scene from it; --fill overrides slots key by key
+node bin/ms.mjs make "<brief>" --template <name>               # a builder writes content.json from the brief, then critic + render
 ```
+
+`ms make --template` skips the reference search and the scene build: the builder only rewrites `content.json` (text in
+the brief's words, brand colours, images it was given) and `brief.md`, checks with `frame`/`sheet` that the words fit,
+and leaves the timing alone.
 
 `content.json` is `{ text: { slot: "..." }, images: ["..."], colors: { green: "#3ddc4a" }, music? }`, served to the
 page as `content.js` (load it before runtime.js). Elements with `data-slot="name"` take `text[name]` (HTML allowed),

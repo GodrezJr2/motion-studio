@@ -19,7 +19,7 @@
 //   ms edit <scene> --after 2.0 --shift 0.3      move every tween starting at or after 2.0 s
 //   ms import <composition.html|dir> [--id x]   bring a HyperFrames composition in as a scene
 //   ms make --resume <id>   continue a stopped run
-//   ms make "<prompt>" [--id x] [--format 9:16] [--rounds 2] [--no-render] [--model m] [--agent a] [--critic-agent a]
+//   ms make "<prompt>" [--id x] [--format 9:16] [--template name] [--rounds 2] [--no-render] [--model m] [--agent a] [--critic-agent a]
 //                                   brief -> refs -> build -> lint -> critic loop -> sound + render, all headless
 //                                   (agent: claude | codex | gemini | opencode; default MOTION.md builder.agent)
 //   ms notes <scene> [--all]        pinned notes (open only unless --all)
@@ -226,7 +226,7 @@ async function main() {
       if (!prompt && !resume) throw new Error('usage: ms make "<what to make>" | ms make --resume <id>');
       const r = await make(prompt, { id: resume || (typeof flags.id === "string" ? flags.id : undefined), resume: !!resume,
         format: typeof flags.format === "string" ? flags.format : undefined, kind: flags.kind,
-        rounds: flags.rounds != null ? +flags.rounds : undefined, render: !flags["no-render"],
+        rounds: flags.rounds != null ? +flags.rounds : undefined, render: !flags["no-render"], template: str(flags.template),
         model: str(flags.model), agent: str(flags.agent), criticAgent: str(flags["critic-agent"]), onLog: l => console.log(l) });
       console.log(`done  ${r.id}  ${r.verdict}${r.video ? `  ${rel(r.video)}` : ""}`);
       break;

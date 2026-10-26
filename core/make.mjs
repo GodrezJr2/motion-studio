@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { run, pick } from "./agents.mjs";
 import { newScene } from "./scaffold.mjs";
+import { fromTemplate, slotsOf } from "./template.mjs";
 import { pull } from "./shelf.mjs";
 import { packet, runCritic, parseVerdict, record, readReview } from "./critic.mjs";
 import { render } from "./render.mjs";
@@ -63,6 +64,32 @@ Only create or change files inside scenes/${id}/. Do not invoke skills: AGENTS.m
 the idea, what moves, what you are least sure about.`;
 }
 
+// --template: the motion is done; the builder only writes the new content into the template's slots
+function fillPrompt(id, prompt, template) {
+  const sl = slotsOf(sceneDir(id));
+  return `You are the builder in Motion Studio. Scene "${id}" was started from the template "${template}": its timeline,
+layout and moves are finished. Your job is to put the user's content into it, not to redesign it.
+
+The user's request: ${prompt}
+
+Read first: AGENTS.md ("Templates"), then scenes/${id}/content.json (the defaults, which show what each slot holds and
+roughly how long its text may be), index.html and scene.js only to see where each slot appears and when.
+Slots: text ${sl.text.join(", ") || "none"}; ${sl.images} images; colors ${sl.colors.join(", ") || "none"}.
+
+Do:
+1. Rewrite scenes/${id}/content.json: every text slot in the request's words and language, the colors from the
+   request's brand (keep the contrast of the defaults), images only if the request gives files or URLs. Keep each
+   text about as long as its default. Never invent logos, metrics, prices, testimonials or customer names: if the
+   request does not give a fact a slot asks for, write a plain line that claims nothing.
+2. Fill brief.md for this piece: product, audience, the one idea.
+3. Check text fits: \`node bin/ms.mjs frame ${id} <t>\` at the moments each slot is on screen, and \`node bin/ms.mjs sheet ${id}\`.
+   If a line overflows, shorten the words first; touch index.html or scene.js only for a fix the words cannot make
+   (a font size, a wrap), never the timing.
+
+Only change files inside scenes/${id}/. Do not invoke skills or memory tools, do not render, do not run the critic. End with three
+short lines: the content, what you shortened, what you are least sure about.`;
+}
+
 function fixPrompt(id, round) {
   const open = readReview(id).rounds.flatMap(r => r.issues).filter(i => i.status === "open" && i.severity !== "minor");
   const minors = round.issues.filter(i => i.severity === "minor");
@@ -85,18 +112,20 @@ function readSize(id) {
 }
 
 // resume: pick a stopped run (session limit, crash) up where make.json says it stopped, without rebuilding
-export async function make(prompt, { id, format, kind, rounds, render: doRender = true, model, agent, criticAgent, resume = false, onLog = () => {} } = {}) {
+export async function make(prompt, { id, format, kind, rounds, render: doRender = true, template, model, agent, criticAgent, resume = false, onLog = () => {} } = {}) {
   const prev = resume ? readMake(id) : null;
   if (resume && !prev) throw new Error(`no make run to resume for "${id}"`);
   prompt = prompt || prev.prompt;
   format = format || (prev && prev.format) || guessFormat(prompt);
   id = id || slugFor(prompt);
   const title = prompt.replace(/\s+/g, " ").trim().slice(0, 60);
-  const s = prev ? readSize(id) : newScene(id, { format, kind, title });
+  if (!prev && template) fromTemplate(id, template);
+  template = template || (prev && prev.template);
+  const s = prev || template ? readSize(id) : newScene(id, { format, kind, title });
   const stopped = prev ? prev.stage : null;
   const built0 = !!prev && (prev.built || /^(critic|fix|lint|render|done)/.test(stopped));
   const status = prev ? { ...prev, error: undefined, done: undefined }
-    : { prompt, format, stage: "scaffold", started: new Date().toISOString(), log: [], verdict: null };
+    : { prompt, format, ...(template && { template }), stage: "scaffold", started: new Date().toISOString(), log: [], verdict: null };
   const save = () => fs.writeFileSync(path.join(outDir(id), "make.json"), JSON.stringify(status, null, 1));
   const log = line => {
     status.log.push(line);
@@ -105,7 +134,7 @@ export async function make(prompt, { id, format, kind, rounds, render: doRender 
     onLog(`[${status.stage}] ${line}`);
   };
   const stage = name => { status.stage = name; log(name === "done" ? "finished" : `-> ${name}`); };
-  log(prev ? `resume from ${stopped}` : `${id}: ${s.width}x${s.height} ${s.kind} (${format})`);
+  log(prev ? `resume from ${stopped}` : `${id}: ${s.width}x${s.height} ${s.kind} (${template ? `template ${template}` : format})`);
 
   const b = pick(tokensFor(id).builder || {}, { agent, model });
   // a session id only means something to the agent that made it
@@ -121,7 +150,13 @@ export async function make(prompt, { id, format, kind, rounds, render: doRender 
   };
 
   try {
-    if (!built0) {
+    if (!built0 && template) {
+      stage("build");
+      log(`builder: ${b.name} ${b.model || "default"} (fill ${template})`);
+      const built = await builder(fillPrompt(id, prompt, template));
+      Object.assign(status, { built: true, session: built.session });
+      log(built.text.trim().split("\n").slice(-3).join(" / "));
+    } else if (!built0) {
       stage("refs");
       let refs = false;
       try {
