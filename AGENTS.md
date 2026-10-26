@@ -240,6 +240,13 @@ Music, the way the strongest published launch-film prompts do it:
 - One licensed track (Mixkit, Pixabay, CC0/CC BY; raw files in `scenes/<id>/audio/raw/`, never committed) at about
   120-130 BPM. Measure its tempo and drop first, then place it with `from: <seconds>` so the drop lands on the hero
   reveal; let the picture follow the music's grid where you can (a bar is 4 beats of 60/BPM s).
+- Measure, do not guess: `ms beat <song> [--scene id] [--length 20]` finds tempo, beats, downbeats, bar loudness
+  and drops (pure JS on ffmpeg PCM). With `--length` and no `--from` it picks the window that puts the song's first
+  drop about 40% in, starting on a downbeat. `--scene` copies the song to `audio/` and writes `beats.js`
+  (`window.MS_BEATS`); load it before scene.js and place things on the grid: `MS.beat(i)`, `MS.bar(n, beat)` (both
+  0-based, seconds into the piece), `MS.snap(t)` (nearest beat). Set `music.from` to the window it printed.
+- Cut a hair early: in the studied Pinterest ad (150 BPM) the hard cuts land about 0.1 s (3 frames at 30 fps)
+  before the beat they belong to, so the new shot is already on screen when the hit sounds. `MS.bar(n) - 0.1`.
 - Effects only on real on-screen actions: one soft whoosh per real scene change, a click or pop per tap, one soft note
   on the logo. Keep them just above the bed, never louder than the music; fade the music under the end card.
 - Banned: EDM risers, whooshes on everything, stock "tech interface" beds, a synthesized hit doubling the drop.

@@ -239,4 +239,12 @@
   MS.rand = rand;
   MS.centre = centre;
   MS.moves = moves;
+
+  // Music grid from beats.js (ms beat): MS.beat(i) = i-th beat, MS.bar(n, b) = beat b of bar n (both 0-based),
+  // MS.snap(t) = nearest beat. Without a beat map they fall back to the tempo in MS_BEATS or 120 BPM from 0.
+  const B = () => window.MS_BEATS || { bpm: 120, period: 0.5, beats: [], downbeats: [] };
+  const grid = (list, i, step) => list[i] ?? (list.length ? list.at(-1) + (i - list.length + 1) * step : i * step);
+  MS.beat = i => grid(B().beats, i, B().period);
+  MS.bar = (n, b = 0) => grid(B().downbeats, n, 4 * B().period) + b * B().period;
+  MS.snap = t => B().beats.reduce((a, x) => Math.abs(x - t) < Math.abs(a - t) ? x : a, Math.round(t / B().period) * B().period);
 })();

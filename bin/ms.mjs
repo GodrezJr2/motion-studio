@@ -34,6 +34,8 @@
 //                                                frames -> refs/study/<slug>/sheet.png + study.md; --scene starts a remake
 //   ms compare <scene> [--study slug]            the scene's render vs its reference: match score (rhythm, cuts,
 //                                                length), side-by-side .ms/compare.mp4 and .ms/compare.png
+//   ms beat <song> [--scene id] [--from s] [--length s]   tempo, beats, downbeats, drops of a song; --scene copies it
+//                                                to audio/ and writes beats.js (MS.beat / MS.bar / MS.snap)
 import fs from "node:fs";
 import path from "node:path";
 import { startServer, listScenes, readNotes, writeNotes } from "../core/server.mjs";
@@ -50,6 +52,7 @@ import { packet, runCritic, parseVerdict, record, readReview } from "../core/cri
 import { tokensFor } from "../core/tokens.mjs";
 import { pick } from "../core/agents.mjs";
 import { study, compare } from "../core/study.mjs";
+import { beat } from "../core/beat.mjs";
 
 const str = v => typeof v === "string" ? v : undefined; // a bare --flag parses as true
 
@@ -272,6 +275,16 @@ notes  ${rel(r.md)}`);
   your cuts  ${r.cuts.mine.map(t => t.toFixed(2)).join(" ")}`);
       console.log(`sheet  ${rel(r.sheet)}
 video  ${rel(r.video)}`);
+      break;
+    }
+    case "beat": {
+      if (!scene) throw new Error("usage: ms beat <song> [--scene id] [--from s] [--length s]");
+      const r = await beat(scene, { scene: str(flags.scene), from: flags.from != null ? +flags.from : undefined, length: flags.length && +flags.length });
+      console.log(`${r.src}  ${r.bpm} BPM (beat ${r.period}s, bar ${(4 * r.period).toFixed(3)}s)  ${r.duration}s from ${r.from}s`);
+      console.log(`  beats ${r.beats.length}  downbeats ${r.downbeats.slice(0, 12).map(t => t.toFixed(2)).join(" ")}${r.downbeats.length > 12 ? " ..." : ""}`);
+      console.log(`  bar energy ${r.bars.map(b => " .:-=+*#%@"[Math.min(9, Math.round(b * 9))]).join("")}`);
+      console.log(`  drops ${r.drops.map(t => t.toFixed(2)).join(" ") || "none"}${r.song ? `  (whole song: ${r.song.drops.map(t => t.toFixed(2)).join(" ") || "none"})` : ""}`);
+      if (r.scene) console.log(`scene  ${rel(r.scene.dir)}/beats.js  (add <script src="beats.js"> before scene.js; audio: { music: ${JSON.stringify(r.scene.music)} })`);
       break;
     }
     case "review": {
