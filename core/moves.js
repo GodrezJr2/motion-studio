@@ -27,6 +27,11 @@
   // Layout centre of el inside `root` (offset chain: ignores transforms, so tweens that already ran do not skew it)
   function centre(el, root = document.body) {
     el = $(el); root = $(root);
+    // SVG elements have no offset chain: fall back to the boxes on screen
+    if (!("offsetLeft" in el)) {
+      const r = el.getBoundingClientRect(), o = root.getBoundingClientRect();
+      return [r.left - o.left + r.width / 2, r.top - o.top + r.height / 2];
+    }
     let x = el.offsetWidth / 2, y = el.offsetHeight / 2;
     for (let n = el; n && n !== root; n = n.offsetParent) { x += n.offsetLeft; y += n.offsetTop; }
     return [x, y];
@@ -176,9 +181,12 @@
       cursor = $(cursor);
       const parent = cursor.offsetParent || document.body;
       const [x, y] = Array.isArray(target) ? target : centre(target, parent);
+      // An <svg> cursor has no offsetLeft/offsetTop (x - undefined is NaN and the cursor lands at 0,0): read its CSS
+      const css = getComputedStyle(cursor);
+      const [left, top] = "offsetLeft" in cursor ? [cursor.offsetLeft, cursor.offsetTop] : [parseFloat(css.left) || 0, parseFloat(css.top) || 0];
       const t = tl();
-      t.to(cursor, { x: x - cursor.offsetLeft - tip[0], duration: dur, ease: "ms.rest" }, 0)
-        .to(cursor, { y: y - cursor.offsetTop - tip[1], duration: dur, ease: "ms.glide" }, 0);
+      t.to(cursor, { x: x - left - tip[0], duration: dur, ease: "ms.rest" }, 0)
+        .to(cursor, { y: y - top - tip[1], duration: dur, ease: "ms.glide" }, 0);
       if (click) t.add(moves.click(cursor, Array.isArray(target) ? hit : target, { press }), dur - 0.05);
       return t;
     },
