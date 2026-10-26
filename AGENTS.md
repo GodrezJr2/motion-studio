@@ -62,7 +62,27 @@ recedes), laptopReveal, pushThrough (dive into an element until it fills the fra
 dust and warp (lightspeed streaks out of a point). `fade: false` on cardStack3D and laptopReveal keeps them on screen
 from the first frame, for a cut that lands mid-move. A child set `visibility: visible` shows through a hidden parent:
 switch inner layers with autoAlpha, not visibility.
-A move harvested from a studied reference is added here, not left in one scene.
+A move harvested from a studied reference goes to `recipes/moves.js` (local, gitignored; load it after core/moves.js), not
+left in one scene and not into this public file.
+
+## Templates (a finished piece, new content)
+
+A template is a finished scene whose words, pictures and colours sit in `content.json`, so the next piece reuses
+the whole timeline and only the content changes:
+
+```
+node bin/ms.mjs template save <scene> <name> [--about "..."]   # copy the scene (no renders, notes or audio)
+node bin/ms.mjs template list                                  # name, slot counts, where it came from
+node bin/ms.mjs new <id> --template <name> [--fill my.json]    # a scene from it; --fill overrides slots key by key
+```
+
+`content.json` is `{ text: { slot: "..." }, images: ["..."], colors: { green: "#3ddc4a" }, music? }`, served to the
+page as `content.js` (load it before runtime.js). Elements with `data-slot="name"` take `text[name]` (HTML allowed),
+colours become CSS custom properties, and the script reads the rest with `MS.slot(name, fallback)` and
+`MS.image(i, fallback)`. To make a scene a template: mark its lines with `data-slot`, pass in-script strings through
+`MS.slot`, derive every tint from the brand variable (`color-mix(in srgb, var(--green) 30%, #000)`), then save.
+Templates live in `recipes/templates/` (or `MS_TEMPLATES`): local and gitignored, like everything learned from a
+reference.
 
 ## The loop
 

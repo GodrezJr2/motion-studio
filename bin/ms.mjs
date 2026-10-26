@@ -3,6 +3,8 @@
 //
 //   ms list                         scenes
 //   ms new <id> [--format 16:9|9:16|1:1|4:5|web] [--kind ad|film|web] [--title "..."]   scene skeleton + brief.md
+//   ms new <id> --template <name> [--fill content.json]   a scene from a saved template, its slots filled
+//   ms template list | save <scene> <name> [--about "..."] | slots <scene|template>   reusable pieces (recipes/templates)
 //   ms serve [--host H] [--port P]  studio UI with live reload
 //   ms lint <scene> [--json]        sample curves + real playback, print issues (writes .ms/report.json)
 //   ms sheet <scene> [--frames N]   contact sheet PNG: stills + velocity curves + issues (.ms/sheet.png)
@@ -45,6 +47,7 @@ import { sheet } from "../core/sheet.mjs";
 import { render } from "../core/render.mjs";
 import { plan, mix } from "../core/audio.mjs";
 import { newScene } from "../core/scaffold.mjs";
+import { listTemplates, saveTemplate, fromTemplate, slotsOf, templatesDir } from "../core/template.mjs";
 import { pull, capture, search } from "../core/shelf.mjs";
 import { applyEdits } from "../core/edit.mjs";
 import { make } from "../core/make.mjs";
@@ -94,6 +97,11 @@ function printRound(r, full = true) {
   if (full && r.best) console.log(`  keep: ${r.best}`);
 }
 
+function printSlots(s) {
+  console.log(`  text   ${s.text.map(n => `${n}=${JSON.stringify((s.content.text || {})[n] ?? "")}`).join("  ") || "-"}`);
+  console.log(`  images ${s.images}   colors ${s.colors.map(c => `${c}=${s.content.colors[c]}`).join(" ") || "-"}`);
+}
+
 async function main() {
   switch (cmd) {
     case "list": {
@@ -101,9 +109,34 @@ async function main() {
       break;
     }
     case "new": {
+      if (typeof flags.template === "string") {
+        const t = fromTemplate(need(scene), flags.template, { fill: typeof flags.fill === "string" ? flags.fill : undefined });
+        console.log(`${rel(t.dir)}  from template ${flags.template}`);
+        printSlots(t.slots);
+        console.log("next: fill content.json (text, images, colors), then brief.md; the motion is already there");
+        break;
+      }
       const s = newScene(need(scene), { format: typeof flags.format === "string" ? flags.format : undefined, kind: flags.kind, title: flags.title });
       console.log(`${rel(s.dir)}  ${s.width}x${s.height} ${s.kind}  safe area ${s.safe.top}/${s.safe.right}/${s.safe.bottom}/${s.safe.left}`);
       console.log("next: fill brief.md, read MOTION.md, write scene.js");
+      break;
+    }
+    case "template": {
+      const sub = scene;
+      if (sub === "list" || !sub) {
+        const all = listTemplates();
+        if (!all.length) console.log(`no templates in ${rel(templatesDir())} (ms template save <scene> <name>)`);
+        for (const t of all) console.log(`${t.name.padEnd(24)} ${t.slots.text.length} text, ${t.slots.images} images, ${t.slots.colors.length} colors  from ${t.from || "?"}${t.about ? "  " + t.about : ""}`);
+      } else if (sub === "save") {
+        const [from, name] = rest;
+        const t = saveTemplate(need(from), need(name), { about: typeof flags.about === "string" ? flags.about : undefined });
+        console.log(`${rel(t.dir)}  saved from ${from}`);
+        printSlots(t.slots);
+      } else if (sub === "slots") {
+        const id = need(rest[0]);
+        const dir = fs.existsSync(path.join(templatesDir(), id)) ? path.join(templatesDir(), id) : path.join("scenes", id);
+        printSlots(slotsOf(dir));
+      } else throw new Error(`ms template ${sub}: list, save <scene> <name> or slots <name>`);
       break;
     }
     case "serve": {

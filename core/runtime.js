@@ -129,8 +129,25 @@
     });
   }
 
+  // Template content (`ms new <id> --template <name>`): the scene's words, pictures and colours live in content.js,
+  // loaded before this file as window.MS_CONTENT = { text: { slot: "..." }, images: ["..."], colors: { name: "#hex" } }.
+  // Elements with data-slot="slot" take text[slot] (HTML allowed), colors become CSS custom properties on :root, and
+  // the scene script reads the rest with MS.slot(name, fallback) and MS.image(i, fallback).
+  const content = window.MS_CONTENT || {};
+  for (const [k, v] of Object.entries(content.colors || {})) document.documentElement.style.setProperty(`--${k}`, v);
+  document.querySelectorAll("[data-slot]").forEach(el => {
+    const v = (content.text || {})[el.dataset.slot];
+    if (v != null) el.innerHTML = v;
+  });
+
   const MS = {
     mode,
+    content,
+    slot: (name, fallback = "") => (content.text || {})[name] ?? fallback,
+    image(i, fallback) {
+      const a = content.images || [];
+      return a.length ? a[i % a.length] : fallback;
+    },
     register(timeline, o = {}) {
       tl = timeline;
       opts = { width: 1440, height: 900, fps: 60, background: null, ...o };

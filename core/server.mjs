@@ -304,6 +304,13 @@ export function startServer({ port = 0, host = "127.0.0.1", watch = false } = {}
       // Taste tokens from MOTION.md as a script, unless the scene ships its own tokens.js
       m = p.match(/^\/scenes\/([^/]+)\/tokens\.js$/);
       if (m && validId(m[1]) && !fs.existsSync(path.join(SCENES, m[1], "tokens.js"))) return send(res, 200, tokensScript(m[1]), TYPES[".js"]);
+      // Template content from content.json as a script (window.MS_CONTENT; see runtime.js), empty when the scene has none
+      m = p.match(/^\/scenes\/([^/]+)\/content\.js$/);
+      if (m && validId(m[1]) && !fs.existsSync(path.join(SCENES, m[1], "content.js"))) {
+        const f = path.join(SCENES, m[1], "content.json");
+        return send(res, 200, `window.MS_CONTENT = ${fs.existsSync(f) ? fs.readFileSync(f, "utf8").trim() : "{}"};
+`, TYPES[".js"]);
+      }
       for (const [prefix, dir] of MOUNTS) {
         if (!p.startsWith(prefix)) continue;
         const file = path.resolve(dir, "." + p.slice(prefix.length - 1));
