@@ -52,6 +52,16 @@ MS.build(() => {                       // waits for fonts: moves measure text an
 snapScale, wipeReveal, maskUp, typeOn (caret), wordSwap (box follows the word), cameraPush / cameraReset (bring a
 target or a point to the frame centre), cardBurst, masonryRise, cursorTo + click, modalIn, toast, blurIn, cuts
 (staccato hard cuts), drift. Helpers: `MS.split`, `MS.rand(seed)` (seeded, never Math.random), `MS.centre`.
+
+3D and texture (from the EarnEdits study): build a stage with `MS.stage3D("#stage")` (returns its `.ms-world3d`;
+children sit at the frame centre, so give each a negative margin of half its size) and `MS.laptop("#el", { w })`
+(CSS laptop, returns its `.ms-screen` to fill). Then camera3D (absolute poses: x/y/z, rx/ry/rz), cardStack3D (cards
+fly in from depth onto depth layers, deeper = dimmer), cardRow3D (a row to track along; turn the world on y so it
+recedes), laptopReveal, pushThrough (dive into an element until it fills the frame: the next scene), glitchType
+(seeded RGB-split jitter), smearSwap (text stretches into blur and returns as new text: a cut inside a smear), folderTree,
+dust and warp (lightspeed streaks out of a point). `fade: false` on cardStack3D and laptopReveal keeps them on screen
+from the first frame, for a cut that lands mid-move. A child set `visibility: visible` shows through a hidden parent:
+switch inner layers with autoAlpha, not visibility.
 A move harvested from a studied reference is added here, not left in one scene.
 
 ## The loop
@@ -282,9 +292,12 @@ reports go to `.ms/` (not source).
 GPU first, always. Headless Chrome already composites and draws WebGL on the GPU. The encoder is picked by
 `core/gpu.mjs`: NVIDIA NVENC, then Intel Quick Sync, then AMD AMF (each proven with a tiny test encode), libx264 on
 the CPU only when none runs. `MS_ENCODER` or `--encoder` overrides; do not force `cpu` unless the GPU encoder fails.
-Capture, not encoding, is the slow part (about 50 ms a frame), so render splits the frames into `--workers`
-(`MS_WORKERS`, default 4) contiguous stretches, captures them on parallel pages of the same browser and joins the
-segments without re-encoding: a 22 s 9:16 ad went from 71 s to 43 s, identical frame for frame. The studio's render
+Capture, not encoding, is the slow part (about 70 ms a frame on one page), so render splits the frames into
+`--workers` (`MS_WORKERS`, default a third of the CPU threads up to 12, at least 2 s of frames each) contiguous
+stretches, captures each in **its own headless Chrome** and joins the segments without re-encoding. One browser per
+worker matters: pages of one browser queue on its single GPU process (8 pages of one browser 66 ms a frame, 8
+browsers 18 ms). Frames are captured as JPEG q95 (`MS_CAPTURE=png` for lossless), twice as fast as PNG and invisible
+after blur averaging and yuv420p. A 16 s stretch at blur 8 went from 189 s to 36 s. The studio's render
 button and `ms make` use the same defaults. This only holds while seeking is deterministic: never let two tweens
 write the same property of the same element at the same time (lint `overlap`).
 

@@ -1,7 +1,9 @@
 // Video export: seek the same timeline frame by frame and pipe each screenshot into ffmpeg.
 // Deterministic, so the MP4 matches what the studio scrubber shows, frame for frame. That also makes it safe to
-// split: several pages of the same headless Chrome (all composited on the GPU) each capture one stretch of frames
-// into their own ffmpeg, and the stretches are joined without re-encoding. Capture, not encoding, is the slow part.
+// split: several headless Chromes each capture one stretch of frames into their own ffmpeg, and the stretches are
+// joined without re-encoding. Capture, not encoding, is the slow part. One browser per worker, not one page each:
+// pages of one browser share its GPU process and queue on it (8 pages of one browser gave 66 ms a frame, 8 browsers
+// 18 ms on an RTX 4060 laptop).
 import { spawn } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
@@ -10,9 +12,14 @@ import { withScene, outDir } from "./session.mjs";
 import { plan, mix, mux } from "./audio.mjs";
 import { encoder } from "./gpu.mjs";
 import { tokensFor } from "./tokens.mjs";
+import { launch } from "./browser.mjs";
 
-// Pages capturing at once: MS_WORKERS or --workers; 4 by default, fewer on a small machine
-const defaultWorkers = () => +process.env.MS_WORKERS || Math.max(1, Math.min(4, Math.floor(os.cpus().length / 4)));
+// Browsers capturing at once: MS_WORKERS or --workers; a third of the threads up to 12 (10 on a 32-thread i9), past
+// that the gain is small (8 browsers 10 ms a frame, 16 browsers 8 ms)
+const defaultWorkers = () => +process.env.MS_WORKERS || Math.max(1, Math.min(12, Math.floor(os.cpus().length / 3)));
+// Screenshot format: JPEG q95 by default, about twice as fast to encode and decode as PNG; blur subframes average out
+// its artefacts and the output is yuv420p anyway. MS_CAPTURE=png for a lossless capture
+const captureFormat = () => process.env.MS_CAPTURE || "jpeg";
 
 function ffmpeg(args) {
   const ff = spawn("ffmpeg", ["-y", "-loglevel", "error", ...args], { stdio: ["pipe", "inherit", "pipe"] });
@@ -25,9 +32,10 @@ function ffmpeg(args) {
   return ff;
 }
 
-// Another page on the same scene, ready to seek
+// The same scene in a browser of its own, ready to seek
 async function clonePage(page, scale) {
-  const p = await page.context().browser().newPage({ viewport: page.viewportSize(), deviceScaleFactor: scale });
+  const browser = await launch();
+  const p = await browser.newPage({ viewport: page.viewportSize(), deviceScaleFactor: scale });
   await p.goto(page.url(), { waitUntil: "load" });
   await p.waitForFunction(() => window.MS && window.MS.ready, null, { timeout: 15000 });
   await p.evaluate(() => document.fonts && document.fonts.ready);
@@ -86,9 +94,9 @@ export async function render(id, { fps, scale = 1, out, crf = 16, from = 0, to, 
     const clip = { x: 0, y: 0, width: info.width, height: info.height, scale: 1 };
     let captured = 0;
     await Promise.all(parts.map(async ([a, b], k) => {
-      const p = pages[k];
+      const p = pages[k], fmt = captureFormat();
       const ff = ffmpeg([
-        "-f", "image2pipe", "-framerate", String(fps * blur), "-c:v", "png", "-i", "-",
+        "-f", "image2pipe", "-framerate", String(fps * blur), "-c:v", fmt === "jpeg" ? "mjpeg" : "png", "-i", "-",
         "-c:v", enc.codec, ...enc.args(crf), "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         // Even dimensions for yuv420p
         "-vf", blurFilter(blur, fps) + "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-r", String(fps), segs[k],
@@ -96,7 +104,7 @@ export async function render(id, { fps, scale = 1, out, crf = 16, from = 0, to, 
       const cdp = await p.context().newCDPSession(p);
       const shot = async t => {
         await p.evaluate(x => MS.seek(x), t);
-        const { data } = await cdp.send("Page.captureScreenshot", { format: "png", optimizeForSpeed: true, clip, captureBeyondViewport: true });
+        const { data } = await cdp.send("Page.captureScreenshot", { format: fmt, ...(fmt === "jpeg" && { quality: 95 }), optimizeForSpeed: true, clip, captureBeyondViewport: true });
         return Buffer.from(data, "base64");
       };
       const write = async buf => { if (!ff.stdin.write(buf)) await new Promise(r => ff.stdin.once("drain", r)); };
@@ -112,6 +120,7 @@ export async function render(id, { fps, scale = 1, out, crf = 16, from = 0, to, 
       }
       ff.stdin.end();
       await ff.done;
+      if (k) await p.context().browser().close();
     }));
 
     if (segs.length > 1) {

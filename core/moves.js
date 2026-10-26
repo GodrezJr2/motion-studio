@@ -228,6 +228,157 @@
     drift(el, dur, vars = { y: -12 }) {
       return tl().to($$(el), { ...vars, duration: dur, ease: "ms.smooth" });
     },
+
+    // 3D camera: tween a world inside a perspective stage (MS.stage3D) to a pose. x/y/z move the world (z toward the
+    // viewer = dolly in), rx/ry/rz turn it. Poses are absolute, so camera moves chain without drift
+    camera3D(world, { x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, dur = 1.2, ease = "ms.cam" } = {}) {
+      return tl().to($(world), { x, y, z, rotationX: rx, rotationY: ry, rotation: rz, duration: dur, ease });
+    },
+
+    // Cards float in z-depth around a point (EarnEdits): each flies in from deeper and lower to a seeded spot on one
+    // of the depth layers; deeper cards are dimmer. Later cards land in front, so a stack builds toward the viewer.
+    // spots: optional [[x, y, z, rot], ...] relative to `at`, else seeded inside `spread`
+    cardStack3D(cards, { at = [0, 0], depths = [0, -260, -560], spread = [520, 300], spots, from = 900, dur = 0.8, stagger = 0.35, seed = 5, dim = 0.45, fade = true } = {}) {
+      const els = $$(cards), r = rand(seed), t = tl();
+      els.forEach((el, i) => {
+        const [x, y, z, rot] = spots?.[i] ?? [(r() - 0.5) * spread[0], (r() - 0.5) * spread[1], depths[(els.length - 1 - i) % depths.length], (r() - 0.5) * 6];
+        gsap.set(el, { x: at[0] + x, y: at[1] + y, z, rotation: rot, filter: `brightness(${1 - dim * (-z / Math.max(1, -Math.min(...depths)))})` });
+        // fade false: the cards are on screen from the first frame (a cut into a stack already landing)
+        t.from(el, { z: z - from, y: at[1] + y + 260, ...(fade && { autoAlpha: 0 }), duration: dur, ease: "ms.rest" }, i * stagger);
+      });
+      return t;
+    },
+
+    // A long row of cards in perspective (EarnEdits 18 s): laid along x inside a world turned by ry/rx, they fly up
+    // into the row one after another; pair with camera3D to track along it
+    cardRow3D(cards, { gap = 40, ry = -38, rx = 12, z = 0, rise = 500, dur = 0.7, stagger = 0.05 } = {}) {
+      const els = $$(cards), t = tl();
+      let x = 0;
+      els.forEach((el, i) => {
+        gsap.set(el, { x, y: 0, z: z - i * 30, rotationY: ry, rotationX: rx });
+        x += el.offsetWidth * Math.cos(ry * Math.PI / 180) * 0.62 + gap;
+        t.from(el, { y: rise, autoAlpha: 0, duration: dur, ease: "ms.rest" }, i * stagger);
+      });
+      t.data = { length: x };
+      return t;
+    },
+
+    // A laptop (MS.laptop) flies in from depth, tilted back, and settles square to camera with its lid opening
+    laptopReveal(el, { dur = 1.1, from = -1400, tilt = 32, lid = true, fade = true } = {}) {
+      el = $(el);
+      const t = tl().from(el, { z: from, rotationX: tilt, y: 120, ...(fade && { autoAlpha: 0 }), duration: dur, ease: "ms.rest" }, 0);
+      const l = el.querySelector(".ms-lid");
+      if (lid && l) t.from(l, { rotationX: -70, duration: dur * 0.9, ease: "ms.rest" }, dur * 0.15);
+      return t;
+    },
+
+    // Push through: the camera dives into an element until it fills the frame (and past it, `over`), so it becomes
+    // the next scene. `reveal` fades in over the last part of the push
+    pushThrough(world, target, { over = 1.15, dur = 1.1, ease = "ms.cam", reveal, revealAt = 0.6 } = {}) {
+      world = $(world);
+      const el = $(target), [fw, fh] = frame();
+      const scale = over * Math.max(fw / el.offsetWidth, fh / el.offsetHeight);
+      const t = tl().add(moves.cameraPush(world, el, { scale, dur, ease }), 0);
+      if (reveal) t.from($(reveal), { autoAlpha: 0, duration: dur * (1 - revealAt), ease: "ms.smooth" }, dur * revealAt);
+      return t;
+    },
+
+    // Display type glitches (EarnEdits 16 s): an RGB split of the word jitters sideways and slices for `dur`, then
+    // settles clean. Stepped on a seeded 15 fps grid like an AE wiggle with posterize time, so every seek is the same
+    glitchType(el, { dur = 0.5, amp = 26, fps = 15, seed = 9, colors = ["#ff2a55", "#2ad8ff"] } = {}) {
+      el = $(el);
+      if (!el.querySelector(".ms-gl")) {
+        el.style.position = el.style.position || "relative";
+        const txt = el.innerHTML;
+        el.insertAdjacentHTML("beforeend", colors.map(c => `<span class="ms-gl" aria-hidden="true" style="position:absolute;inset:0;color:${c};mix-blend-mode:screen;opacity:0;pointer-events:none">${txt}</span>`).join(""));
+      }
+      const layers = [...el.querySelectorAll(".ms-gl")], r = rand(seed), t = tl();
+      const n = Math.max(1, Math.round(dur * fps));
+      for (let k = 0; k < n; k++) {
+        const a = amp * (1 - k / n);
+        layers.forEach((l, j) => {
+          const top = Math.floor(r() * 70), h = 10 + Math.floor(r() * 40);
+          t.set(l, { opacity: 0.9, x: (j ? -1 : 1) * a * (0.3 + r()), clipPath: `inset(${top}% 0 ${Math.max(0, 100 - top - h)}% 0)` }, k / fps);
+        });
+        t.set(el, { skewX: (r() - 0.5) * a * 0.4, scaleX: 1 + (r() - 0.3) * a / 120 }, k / fps);
+      }
+      t.set(layers, { opacity: 0, x: 0, clipPath: "inset(0% 0 0% 0)" }, dur).set(el, { skewX: 0, scaleX: 1 }, dur);
+      return t;
+    },
+
+    // Smear swap: the text stretches sideways into a blur and comes back as the next text (EarnEdits "Stop spending").
+    // A cut hidden inside a smear; text is swapped at the widest point
+    smearSwap(el, next, { dur = 0.32, stretch = 1.9, blur = 10 } = {}) {
+      el = $(el);
+      // A set records the old text, so seeking back restores it
+      return tl()
+        .to(el, { scaleX: stretch, filter: `blur(${blur}px)`, autoAlpha: 0.5, duration: dur / 2, ease: "ms.exit" }, 0)
+        .set(el, { innerHTML: next }, dur / 2)
+        .to(el, { scaleX: 1, filter: "blur(0px)", autoAlpha: 1, duration: dur / 2, ease: "ms.out" }, dur / 2);
+    },
+
+    // A file tree builds line by line (EarnEdits "Effects & Presets"): the guide line draws down, rows slide in.
+    // at: optional start times per row (seconds into the move), else every `step`
+    folderTree(el, { rows = ":scope > *", step = 0.5, at } = {}) {
+      el = $(el);
+      const items = [...el.querySelectorAll(rows)], t = tl();
+      items.forEach((it, i) => t.from(it, { x: -18, autoAlpha: 0, duration: 0.45, ease: "ms.outSoft" }, at?.[i] ?? i * step));
+      const guide = el.querySelector(".ms-guide");
+      if (guide) t.from(guide, { scaleY: 0, transformOrigin: "50% 0", duration: 0.6, ease: "ms.smooth" }, 0);
+      return t;
+    },
+
+    // Dust: seeded specks drifting through a dark field (texture under the type). Creates them inside `field`
+    dust(field, { n = 60, dur = 10, seed = 21, color = "rgba(160,255,170,.55)", size = [1.5, 3.5], travel = 120 } = {}) {
+      field = $(field);
+      const r = rand(seed), [fw, fh] = [field.offsetWidth || frame()[0], field.offsetHeight || frame()[1]], t = tl();
+      for (let i = 0; i < n; i++) {
+        const d = document.createElement("i"), s = size[0] + r() * (size[1] - size[0]);
+        d.style.cssText = `position:absolute;left:${r() * fw}px;top:${r() * fh}px;width:${s}px;height:${s}px;border-radius:50%;background:${color};opacity:${0.25 + r() * 0.6}`;
+        field.appendChild(d);
+        t.to(d, { x: (r() - 0.5) * travel, y: -travel * (0.3 + r()), duration: dur, ease: "none" }, 0);
+      }
+      return t;
+    },
+
+    // Warp: streaks fly out of a point like stars at lightspeed (EarnEdits "Introducing"): each one leaves the centre
+    // along its own angle and stretches as it speeds up, then restarts. Creates them inside `field`; seeded, so seek-safe
+    warp(field, { n = 140, dur = 2, life = 0.7, seed = 31, from, color = "rgba(190,255,200,.8)", len = [30, 170], reach = 1300 } = {}) {
+      field = $(field);
+      const r = rand(seed), [fw, fh] = frame(), [cx, cy] = from || [fw / 2, fh / 2], t = tl();
+      for (let i = 0; i < n; i++) {
+        const a = r() * Math.PI * 2, l = len[0] + r() * (len[1] - len[0]), d = document.createElement("i"), r0 = 40 + r() * 260;
+        d.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${l}px;height:2px;border-radius:1px;background:linear-gradient(90deg,transparent,${color});transform-origin:0 50%`;
+        field.appendChild(d);
+        const k = life * (0.7 + r() * 0.6), cos = Math.cos(a), sin = Math.sin(a), p = r(), rot = a * 180 / Math.PI;
+        // Already in flight on the first frame (a cut lands mid-warp): the first pass starts at phase p
+        const at = q => ({ x: cos * (r0 + (reach - r0) * q * q), y: sin * (r0 + (reach - r0) * q * q), rotation: rot, scaleX: 0.2 + 1.2 * q, opacity: Math.min(1, q * 3) });
+        t.fromTo(d, at(p), { ...at(1), duration: k * (1 - p), ease: "none" }, 0);
+        t.fromTo(d, at(0), { ...at(1), duration: k, ease: "power2.in", repeat: Math.max(0, Math.floor((dur - k * (1 - p)) / k) - 1), immediateRender: false }, k * (1 - p));
+      }
+      return t;
+    },
+  };
+
+  // A perspective stage: <div class="ms-stage3d"><div class="ms-world3d">...</div></div>, children positioned from
+  // the stage centre (left/top 50%) so x/y/z read as offsets from the frame centre
+  MS.stage3D = (el, { perspective = 1400 } = {}) => {
+    el = $(el);
+    el.style.cssText += `;position:absolute;inset:0;perspective:${perspective}px;perspective-origin:50% 50%;overflow:hidden`;
+    const w = el.querySelector(".ms-world3d");
+    if (w) w.style.cssText += ";position:absolute;left:50%;top:50%;width:0;height:0;transform-style:preserve-3d";
+    for (const c of w ? w.children : []) c.style.cssText += ";position:absolute;transform-style:preserve-3d";
+    return w;
+  };
+
+  // Laptop mock in CSS (base + lid with a screen): fill .ms-screen with the app UI or a screenshot
+  MS.laptop = (el, { w = 900, screen = "" } = {}) => {
+    el = $(el);
+    const h = w * 0.62;
+    el.style.cssText += `;width:${w}px;height:${h + 30}px;transform-style:preserve-3d`;
+    el.innerHTML = `<div class="ms-lid" style="position:absolute;left:0;top:0;width:${w}px;height:${h}px;border-radius:${w * 0.03}px ${w * 0.03}px 6px 6px;background:#0d0f0e;border:${w * 0.012}px solid #2a2d2c;transform-origin:50% 100%;box-shadow:0 30px 80px rgba(0,0,0,.6)"><div class="ms-screen" style="position:absolute;inset:${w * 0.012}px;overflow:hidden;border-radius:4px;background:#111">${screen}</div></div>
+      <div class="ms-base" style="position:absolute;left:${-w * 0.06}px;top:${h}px;width:${w * 1.12}px;height:${w * 0.022}px;border-radius:0 0 ${w * 0.03}px ${w * 0.03}px;background:linear-gradient(#3a3d3c,#1b1d1c)"></div>`;
+    return el.querySelector(".ms-screen");
   };
 
   // Build once the fonts are in (moves measure text)
