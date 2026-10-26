@@ -11,6 +11,7 @@ import { SHELF } from "./shelf.mjs";
 import { sceneDir, outDir } from "./session.mjs";
 import { newScene } from "./scaffold.mjs";
 import { tokensFor } from "./tokens.mjs";
+import { musicOf } from "./beat.mjs";
 
 export const STUDY = path.join(SHELF, "study");
 const EFPS = 30; // energy samples per second
@@ -154,6 +155,8 @@ export async function study(src, { slug, scene, threshold = 0.3 } = {}) {
   const cutList = await cuts(file, threshold);
   const e = await energy(file);
   const shots = shotsOf(cutList, info.duration);
+  // Music: tempo and how the cuts sit on it (the lead an editor cuts ahead of the beat)
+  const music = info.audio ? await musicOf(file, cutList).catch(() => null) : null;
 
   // Frames every step (at most 40), plus the first frame after each cut
   const step = Math.max(0.5, Math.ceil(info.duration / 40 * 2) / 2);
@@ -167,7 +170,7 @@ export async function study(src, { slug, scene, threshold = 0.3 } = {}) {
   const avg = shots.reduce((a, [x, y]) => a + y - x, 0) / shots.length;
   const portrait = info.height > info.width;
   const cols = portrait ? 10 : 6;
-  const data = { src, slug: s, ...meta, ...info, format: formatFor(info.width, info.height), cuts: cutList, shots, energyFps: EFPS, energy: e,
+  const data = { src, slug: s, ...meta, ...info, format: formatFor(info.width, info.height), cuts: cutList, shots, music, energyFps: EFPS, energy: e,
     at: new Date().toISOString() };
   fs.writeFileSync(path.join(dir, "study.json"), JSON.stringify(data));
 
@@ -187,10 +190,22 @@ export async function study(src, { slug, scene, threshold = 0.3 } = {}) {
 
   // Notes to fill while watching: what moves, how, and which MS.moves it maps to
   const md = path.join(dir, "study.md");
-  if (!fs.existsSync(md)) fs.writeFileSync(md, `# ${meta.title || s}
+  // Front matter is what ms playbook folds into refs/PLAYBOOK.md: fill it while watching
+  if (!fs.existsSync(md)) fs.writeFileSync(md, `---
+title: ${JSON.stringify((meta.title || s).slice(0, 80))}
+by: ${JSON.stringify(meta.uploader || "")}
+tags: []        # style words to find it by: minimal, kinetic-type, ui-mock, 3d, staccato, brand-ad, ...
+palette: []     # hex colours
+type: []        # typefaces / type treatment
+moves: []       # MS.moves names seen (new ones too), "name: how it is done here"
+techniques: []  # one line each: a trick worth stealing and how it is built
+---
+
+# ${meta.title || s}
 
 ${meta.url || src}  ·  ${meta.uploader || ""}  ·  ${info.duration}s ${info.width}x${info.height} @ ${info.fps}fps  ·  format ${data.format}
-Sheet: sheet.png. Shots: ${shots.length}, average ${avg.toFixed(2)} s.
+Sheet: sheet.png. Shots: ${shots.length}, average ${avg.toFixed(2)} s.${music ? `
+Music: ${music.bpm} BPM, ${Math.round(100 * music.onBeat)}% of cuts on a beat${music.lead != null ? `, cuts lead the beat by ${music.lead} s` : ""}.` : ""}
 
 ## Shots
 

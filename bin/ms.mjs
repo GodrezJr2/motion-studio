@@ -36,6 +36,7 @@
 //                                                length), side-by-side .ms/compare.mp4 and .ms/compare.png
 //   ms beat <song> [--scene id] [--from s] [--length s]   tempo, beats, downbeats, drops of a song; --scene copies it
 //                                                to audio/ and writes beats.js (MS.beat / MS.bar / MS.snap)
+//   ms playbook ["<words>"]                      every study's learnings -> refs/PLAYBOOK.md; with words, what matches
 import fs from "node:fs";
 import path from "node:path";
 import { startServer, listScenes, readNotes, writeNotes } from "../core/server.mjs";
@@ -53,6 +54,7 @@ import { tokensFor } from "../core/tokens.mjs";
 import { pick } from "../core/agents.mjs";
 import { study, compare } from "../core/study.mjs";
 import { beat } from "../core/beat.mjs";
+import { playbook, lookup } from "../core/playbook.mjs";
 
 const str = v => typeof v === "string" ? v : undefined; // a bare --flag parses as true
 
@@ -285,6 +287,20 @@ video  ${rel(r.video)}`);
       console.log(`  bar energy ${r.bars.map(b => " .:-=+*#%@"[Math.min(9, Math.round(b * 9))]).join("")}`);
       console.log(`  drops ${r.drops.map(t => t.toFixed(2)).join(" ") || "none"}${r.song ? `  (whole song: ${r.song.drops.map(t => t.toFixed(2)).join(" ") || "none"})` : ""}`);
       if (r.scene) console.log(`scene  ${rel(r.scene.dir)}/beats.js  (add <script src="beats.js"> before scene.js; audio: { music: ${JSON.stringify(r.scene.music)} })`);
+      break;
+    }
+    case "playbook": {
+      if (!scene) {
+        const r = await playbook();
+        console.log(`${rel(r.file)}  ${r.studies.length} studies, ${r.moves.length} moves (${r.moves.filter(m => !m.built).length} not in core/moves.js yet)`);
+        for (const s of r.studies) console.log(`  ${s.slug}  ${s.duration}s ${s.format}  ${s.shots} shots${s.music ? `  ${s.music.bpm} BPM, ${Math.round(100 * s.music.onBeat)}% cuts on beat` : ""}${s.filled ? "" : "  (study.md front matter not filled)"}`);
+        break;
+      }
+      const r = await lookup(args.slice(1).join(" "));
+      console.log(`studies  ${r.studies.join(", ") || "none"}`);
+      for (const m of r.moves) console.log(`move     ${m.name}${m.built ? "" : " (not in core/moves.js yet)"}  seen in ${m.seen.join(", ")}${m.notes.length ? `  ${m.notes.join("; ")}` : ""}`);
+      for (const t of r.techniques) console.log(`trick    ${t.t}  [${t.study}]`);
+      for (const t of r.good) console.log(`why      ${t.t}  [${t.study}]`);
       break;
     }
     case "review": {

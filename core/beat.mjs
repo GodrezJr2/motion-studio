@@ -205,3 +205,15 @@ export async function beat(file, { scene, from, length } = {}) {
   }
   return { ...map, scene: out };
 }
+
+// The music under a studied piece: tempo, share of cuts on a beat, and how far ahead of the beat the cuts land
+// (median, seconds; editors cut a hair early). Cuts before 0.1 s and over 1/3 beat from any beat are left out of the lead.
+export async function musicOf(file, cuts) {
+  const map = await beatMap(file);
+  const offs = cuts.filter(c => c > 0.1).map(c => map.beats.reduce((a, b) => Math.abs(b - c) < Math.abs(a) ? b - c : a, Infinity))
+    .filter(o => Math.abs(o) < map.period / 3).sort((a, b) => a - b);
+  return {
+    bpm: map.bpm, period: map.period, drops: map.drops, onBeat: r3(onBeat(cuts.filter(c => c > 0.1), map.beats, 0.12) ?? 0),
+    lead: offs.length ? r3(offs[Math.floor(offs.length / 2)]) : null,
+  };
+}

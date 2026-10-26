@@ -191,6 +191,22 @@ writes a contact sheet; fill `study.md` with a beat table (time, what happens, w
 and scores 0.45 rhythm (energy correlation) + 0.4 cuts within 0.2 s + 0.15 length; look at its frame pairs, fix the
 biggest gap, render, compare again. Third-party pieces and remakes stay local (`refs/` and scenes are gitignored).
 
+`study` also measures the music under the piece (tempo, share of cuts on a beat, how far ahead of the beat the
+cuts land) into study.json, and starts study.md with front matter to fill while watching: `tags`, `palette`, `type`,
+`moves` (MS.moves names, new ones too, as "name: how it is done here") and `techniques` (one trick per line).
+
+### Playbook (mix what was learned)
+
+```
+node bin/ms.mjs playbook                 # every study -> refs/PLAYBOOK.md: studies side by side, each move with where it
+                                         # was seen and whether core/moves.js has it, techniques, principles, palettes
+node bin/ms.mjs playbook "3d camera"     # what the studies say about some words: the start of a new concept
+```
+
+A new concept mixes the playbook, not one reference: take the structure from one study, a move or two from another,
+one palette and one type system, then build it as its own piece. Moves marked "not yet" are the next ones to build
+into core/moves.js. Fill the front matter of every study, or the playbook cannot use it.
+
 Pull refs before building a new piece and look at the images: they set the bar for detail and finish, they are not
 layouts to copy. Needs MC_URL + MC_TOKEN or `~/.memory-core.json`.
 
