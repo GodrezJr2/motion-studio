@@ -296,7 +296,8 @@
     glitchType(el, { dur = 0.5, amp = 26, fps = 15, seed = 9, colors = ["#ff2a55", "#2ad8ff"] } = {}) {
       el = $(el);
       if (!el.querySelector(".ms-gl")) {
-        el.style.position = el.style.position || "relative";
+        // Only a static element needs a containing block; forcing relative on an absolute one turns it into a full-width block
+        if (getComputedStyle(el).position === "static") el.style.position = "relative";
         const txt = el.innerHTML;
         el.insertAdjacentHTML("beforeend", colors.map(c => `<span class="ms-gl" aria-hidden="true" style="position:absolute;inset:0;color:${c};mix-blend-mode:screen;opacity:0;pointer-events:none">${txt}</span>`).join(""));
       }

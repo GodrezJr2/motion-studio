@@ -22,6 +22,8 @@ const MOUNTS = [
   ["/studio/", path.join(ROOT, "studio")],
   ["/scenes/", SCENES],
   ["/sounds/", path.join(ROOT, "sounds")],
+  // Your own move library and notes, kept out of the repo (gitignored): load /recipes/moves.js after core/moves.js
+  ["/recipes/", path.join(ROOT, "recipes")],
   ["/vendor/gsap/", path.join(ROOT, "node_modules", "gsap", "dist")],
 ];
 
