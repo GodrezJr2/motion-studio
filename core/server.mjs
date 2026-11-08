@@ -38,6 +38,10 @@ export function listScenes() {
     });
 }
 
+// Undo / redo of studio edits, per scene, in memory (a step = the files one edit rewrote, before and after)
+const histories = new Map();
+const history = id => { if (!histories.has(id)) histories.set(id, { undo: [], redo: [] }); return histories.get(id); };
+const historyState = id => ({ undo: history(id).undo.length, redo: history(id).redo.length });
 const readJson = f => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
 
 // The project list for the studio's home: what each scene is and where it stands, all from files already on disk
@@ -254,17 +258,42 @@ export function startServer({ port = 0, host = "127.0.0.1", watch = false } = {}
         newScene(String(b.id || ""), { format: b.format, kind: b.kind || undefined, title: b.title || undefined });
         return send(res, 201, { id: b.id });
       }
-      m = p.match(/^\/api\/scenes\/([^/]+)\/(audio|files|render|poster|duplicate|sounds|edit)$/);
+      m = p.match(/^\/api\/scenes\/([^/]+)\/(audio|files|render|poster|duplicate|sounds|edit|undo|redo)$/);
       if (m) {
         const [, id, what] = m;
         if (!validId(id)) return send(res, 404, { error: "no such scene" });
         if (what === "audio") return send(res, 200, await sceneAudio(id));
         if (what === "edit" && req.method === "POST") {
           // { ops: [...], tweens: MS.tweens() from the stage } -> rewrite scene.js; the watcher reloads the stage
+          // { moves: [{ tween, shift?, dur? }], ripple? } -> timeline drag/resize: only the selected tweens move
           const b = await body(req);
-          const { applyEdits } = await import("./edit.mjs");
-          return send(res, 200, { changes: applyEdits(id, b.tweens || [], b.ops || [], { dry: !!b.dry }) });
+          const { applyEdits, applyMoves } = await import("./edit.mjs");
+          const log = b.dry ? null : [];
+          let out;
+          if (b.moves && !b.ripple) out = applyMoves(id, b.tweens || [], b.moves, { dry: !!b.dry, log });
+          else {
+            const ops = b.moves ? b.moves.map(m => ({ tween: m.tween, ...(m.shift ? { shift: m.shift } : {}), ...(m.dur != null ? { dur: m.dur } : {}) })) : b.ops || [];
+            out = { changes: applyEdits(id, b.tweens || [], ops, { dry: !!b.dry, log }) };
+          }
+          if (log && log.length) { const h = history(id); h.undo.push(log); if (h.undo.length > 100) h.undo.shift(); h.redo = []; }
+          return send(res, 200, { ...out, ...historyState(id) });
         }
+        if ((what === "undo" || what === "redo") && req.method === "POST") {
+          // Studio edits only. A step is refused when the file changed since (an agent or a hand edit): undoing then
+          // would throw that work away.
+          const h = history(id), from = h[what], to = h[what === "undo" ? "redo" : "undo"];
+          const step = from.at(-1);
+          if (!step) return send(res, 409, { error: `nothing to ${what}`, ...historyState(id) });
+          const [want, put] = what === "undo" ? ["after", "before"] : ["before", "after"];
+          if (step.some(f => fs.readFileSync(f.full, "utf8") !== f[want])) {
+            h.undo = []; h.redo = [];
+            return send(res, 409, { error: "scene.js changed outside the studio since; history cleared", ...historyState(id) });
+          }
+          for (const f of step) fs.writeFileSync(f.full, f[put]);
+          to.push(from.pop());
+          return send(res, 200, historyState(id));
+        }
+        if (what === "edit" && req.method === "GET") return send(res, 200, historyState(id));
         if (what === "sounds") {
           const { kitInfo } = await import("./audio.mjs");
           return send(res, 200, await kitInfo(id));

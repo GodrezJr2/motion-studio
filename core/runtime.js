@@ -78,6 +78,7 @@
     if (!tl) return [];
     const out = [];
     const walk = (parent, offset) => {
+      const par = uid(parent);
       for (const child of parent.getChildren(false, true, true)) {
         const start = offset + child.startTime() / (parent.timeScale() || 1);
         if (child instanceof gsap.core.Timeline) { walk(child, start); continue; }
@@ -89,12 +90,14 @@
         out.push({
           id: vars.id || null,
           src: where.get(vars) || null,
+          par, // which timeline holds it (relative positions chain inside one timeline)
           start: +start.toFixed(4),
           duration: +child.duration().toFixed(4),
           repeat: child.repeat ? child.repeat() : 0,
           ease: easeName(vars.ease || (child.parent && child.parent.vars.defaults && child.parent.vars.defaults.ease) || "power1.out"),
           props: Object.keys(vars).filter(k => !skip.has(k)),
           from: !!vars.runBackwards,
+          stagger: vars.stagger != null,
           targets: targets.filter(t => t instanceof Element).map(nameOf),
           // what it writes, per element: attr / css objects spread into their keys
           els: targets.filter(t => t instanceof Element).map(uid),

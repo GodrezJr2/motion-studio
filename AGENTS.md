@@ -115,6 +115,13 @@ node bin/ms.mjs edit <scene> --after 2.0 --shift 0.3               # push everyt
 ```
 
 The user can do the same in the studio: double-click a bar for start / duration / ease / stagger.
+The timeline is an editor too: drag a bar to move it, drag its edges to retime, Shift/Ctrl-click or drag a box to
+select several, `,` / `.` nudge a frame (Shift: 10). Moves snap to the playhead, other bars, beats and the ends (7 px,
+Alt drags free). Only the selected calls move: `POST /api/scenes/:id/edit {moves: [{tween, shift?, dur?}]}` replays
+each timeline's calls in source order and rewrites relative positions (`"<"`, `"+=0.2"`, none) so followers stay put;
+ripple mode (R) shifts them along instead. Ctrl+Z / Ctrl+Shift+Z undo and redo every studio edit (history in server
+memory, per scene); a scene.js changed outside the studio since then refuses the undo (409), so your own edits are
+never rolled back by it. Bars of preset moves (no source line) are read-only.
 
 Reply in one or two sentences: what changed (ease, duration, offset, path) and the lint result. Resolve only when
 the note is addressed; if you disagree or need their eye, reply without `--resolve`.

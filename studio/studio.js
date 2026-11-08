@@ -23,10 +23,12 @@
   const S = {
     scenes: [], id: null, info: null, tweens: [], groups: [], notes: [], report: null,
     t: 0, playing: false, rate: 1, loop: true, onion: false, sound: true, audio: null, files: [], pinning: false, selNote: null, hl: null, linting: false,
+    sel: new Set(), // selected tweens, by source call (scene.js:12:4): survives the reload an edit causes
+    zoom: 1, snap: true, ripple: false,
   };
   let MS = null;
   let loadToken = 0;
-  const frame = $("#frame"), stage = $("#stage"), well = $("#well"), wrap = $("#lanes-wrap");
+  const frame = $("#frame"), stage = $("#stage"), well = $("#well"), wrap = $("#lanes-wrap"), tracksEl = $("#tracks");
   const fps = () => (S.info && S.info.fps) || 60;
   const dur = () => (S.info && S.info.duration) || 1;
 
@@ -73,6 +75,8 @@
     seek(keep ? Math.min(keep.t, dur()) : 0);
     if (wasPlaying) play();
     loadAudio();
+    document.body.classList.remove("saving");
+    if (!keep) { S.sel.clear(); api(`/api/scenes/${id}/edit`).then(setHist, () => {}); }
     await Promise.all([loadNotes(), loadReport(), loadFiles()]);
   }
 
@@ -139,6 +143,11 @@
     $("#tc").textContent = tc(S.t);
     $("#tc-sec").textContent = S.t.toFixed(3) + "s";
     $("#playhead").style.transform = `translateX(${x(S.t)}px)`;
+    if (S.playing && S.zoom > 1) {
+      // Zoomed in: page the view along with the playhead
+      const px = x(S.t), sl = tracksEl.scrollLeft, vis = tracksEl.clientWidth - labelsW();
+      if (px < sl || px > sl + vis - 40) tracksEl.scrollLeft = px - 40;
+    }
     drawOverlay();
   }
   function play() {
@@ -172,12 +181,21 @@
   })();
 
   // ── timeline ─────────────────────────────────────────
-  const trackW = () => Math.max(50, wrap.clientWidth - 16);
+  // Width of the time axis: the visible lane area times the zoom; the tracks box scrolls sideways when zoomed
+  const labelsW = () => document.querySelector(".labels").offsetWidth;
+  const baseW = () => Math.max(50, tracksEl.clientWidth - labelsW() - 16);
+  const trackW = () => baseW() * S.zoom;
   const x = t => (t / dur()) * trackW();
+  const tAt = clientX => (clientX - wrap.getBoundingClientRect().left) / trackW() * dur();
+  // What a tween animates, for the bar's tint
+  const KINDS = [["move", /^(x|y|z|xPercent|yPercent|motionPath|left|top|right|bottom)$/], ["xform", /^(scale|rotat|skew|transform)/],
+    ["fade", /^(opacity|autoAlpha|filter|visibility)$/], ["draw", /^(clipPath|attr|css|strokeDash|drawSVG|morphSVG|width|height|backgroundColor|color)/]];
+  const kindOf = props => (KINDS.find(([, re]) => props.some(p => re.test(p))) || ["other"])[0];
+  const beats = () => { try { return frame.contentWindow.MS_BEATS || null; } catch { return null; } };
 
   function easePath(name) {
     let fn;
-    try { fn = gsap.parseEase(name); } catch { fn = null; }
+    try { fn = ((frame.contentWindow && frame.contentWindow.gsap) || gsap).parseEase(name); } catch { fn = null; }
     if (typeof fn !== "function") fn = p => p;
     const pts = Array.from({ length: 41 }, (_, i) => fn(i / 40));
     const lo = Math.min(0, ...pts), hi = Math.max(1, ...pts);
@@ -195,14 +213,29 @@
     }
     S.groups = [...groups.values()];
     const W = trackW();
+    // Tweens of one element that overlap in time stack into sub-rows, so each bar stays visible and grabbable
+    const spanEnd = tw => tw.start + (tw.repeat < 0 ? dur() - tw.start : tw.duration * (tw.repeat + 1));
+    for (const g of S.groups) {
+      const ends = [];
+      g.row = new Map();
+      for (const tw of [...g.tweens].sort((a, b) => a.start - b.start)) {
+        let r = ends.findIndex(e => e <= tw.start + 1e-4);
+        if (r < 0) r = ends.length;
+        ends[r] = spanEnd(tw);
+        g.row.set(tw, r);
+      }
+      g.h = 6 + Math.max(1, ends.length) * 20;
+    }
     const issuesOf = g => (S.report ? S.report.issues.filter(i => g.names.includes(i.element)) : []);
 
+    wrap.style.width = W + 16 + "px";
     $("#labels").replaceChildren(...S.groups.map(g => h("div", {
-      "data-key": g.key, title: g.key, class: g.names.includes(S.hl) ? "hl" : "",
+      "data-key": g.key, title: g.key, class: "row" + (g.names.includes(S.hl) ? " hl" : ""), style: `height:${g.h}px`,
       onmouseenter: () => highlight(g.names[0]), onmouseleave: () => highlight(null),
-    }, issuesOf(g).length ? h("i", {}, "●") : null, g.names.length > 2 ? `${g.names[0]} +${g.names.length - 1}` : g.key)));
+    }, h("span", { class: "sw", style: `background:var(--k-${kindOf(g.tweens.flatMap(t => t.props))})` }),
+      issuesOf(g).length ? h("i", {}, "●") : null, g.names.length > 2 ? `${g.names[0]} +${g.names.length - 1}` : g.key)));
 
-    $("#lanes").replaceChildren(...S.groups.map(g => h("div", { class: "lane" + (g.names.includes(S.hl) ? " hl" : "") },
+    $("#lanes").replaceChildren(...S.groups.map(g => h("div", { class: "lane" + (g.names.includes(S.hl) ? " hl" : ""), style: `height:${g.h}px` },
       issuesOf(g).map(i => h("div", { class: `shade ${i.severity}`, style: `left:${x(i.t0)}px;width:${Math.max(3, x(i.t1) - x(i.t0))}px` })),
       g.tweens.map(tw => {
         const span = tw.repeat < 0 ? dur() - tw.start : tw.duration * (tw.repeat + 1);
@@ -212,10 +245,13 @@
         svg.setAttribute("preserveAspectRatio", "none");
         svg.innerHTML = `<path d="${easePath(tw.ease)}"/>`;
         return h("div", {
-          class: `bar${tw.from ? " from" : ""}${tw.repeat ? " loop" : ""}`, "data-start": tw.start, "data-i": S.tweens.indexOf(tw),
-          style: `left:${x(tw.start)}px;width:${w}px`,
-          title: `${tw.start.toFixed(2)}s +${tw.duration.toFixed(2)}s · ${tw.ease}${tw.from ? " · from" : ""} · ${tw.props.join(", ")}${tw.id ? " · id " + tw.id : ""}${tw.src ? " · double-click to edit" : ""}`,
-        }, svg, w > 70 ? h("span", {}, `${tw.ease} · ${tw.props.join(",")}`) : null);
+          class: `bar k-${kindOf(tw.props)}${tw.from ? " from" : ""}${tw.repeat ? " loop" : ""}${tw.src ? "" : " ro"}${tw.src && S.sel.has(tw.src) ? " sel" : ""}`,
+          "data-start": tw.start, "data-i": S.tweens.indexOf(tw), "data-src": tw.src || "",
+          style: `left:${x(tw.start)}px;width:${w}px;top:${3 + g.row.get(tw) * 20}px`,
+          title: `${tw.start.toFixed(2)}s +${tw.duration.toFixed(2)}s · ${tw.ease}${tw.from ? " · from" : ""} · ${tw.props.join(", ")}${tw.id ? " · id " + tw.id : ""}` +
+            (tw.src ? ` · ${tw.src}\ndrag to move, edges to retime, double-click for ease` : " · built by a preset (core/moves.js): edit it in code"),
+        }, svg, w > 70 ? h("span", {}, `${tw.id ? tw.id + " · " : ""}${tw.ease} · ${tw.props.join(",")}`) : null,
+          tw.src && w > 16 ? [h("i", { class: "hd l" }), h("i", { class: "hd r" })] : null);
       }))));
 
     // Ruler: frame ticks when there is room, seconds labelled
@@ -228,6 +264,13 @@
       const isLabel = Math.abs(t / label - Math.round(t / label)) < 1e-6;
       kids.push(h("div", { class: "tick" + (isLabel ? " s" : ""), style: `left:${x(t)}px` }, isLabel ? h("b", {}, t.toFixed(label < 1 ? 2 : 0).replace(/\.?0+$/, "") + "s") : null));
     }
+    const B = beats();
+    if (B && B.beats && B.beats.length) {
+      const down = new Set((B.downbeats || []).map(t => t.toFixed(3)));
+      const every = (B.period || 0.5) * pps > 7;
+      for (const t of B.beats) if (t <= dur() && (every || down.has(t.toFixed(3))))
+        kids.push(h("div", { class: "beat" + (down.has(t.toFixed(3)) ? " down" : ""), style: `left:${x(t)}px` }));
+    }
     if (S.report) for (const i of S.report.issues) kids.push(h("div", { class: `iss ${i.severity}`, style: `left:${x(i.t0)}px;width:${Math.max(4, x(i.t1) - x(i.t0))}px`, title: `${i.rule}: ${i.message}` }));
     if (S.audio) for (const c of S.audio.cues) kids.push(h("div", { class: "cue", style: `left:${x(c.event)}px`, title: `${c.sound} at ${c.event.toFixed(2)}s` }));
     S.notes.forEach((n, i) => kids.push(h("div", {
@@ -238,21 +281,255 @@
     showTime();
   }
 
-  // Scrub anywhere on the ruler or lanes
+  // ── timeline editing ─────────────────────────────────────────
+  // Ruler: scrub. Bar: select (Shift/Ctrl adds), drag to move, drag an edge to retime. Empty lane: click seeks and
+  // clears the selection, drag draws a marquee. Every drop is one edit of scene.js through /edit (core/edit.mjs
+  // applyMoves: only the selected tweens move, relative positions are compensated), one undo step, and the stage
+  // reloads from the rewritten source.
+  const toast = (msg, err = false) => {
+    const t = $("#toast");
+    t.textContent = msg;
+    t.classList.toggle("err", err);
+    t.classList.add("on");
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => t.classList.remove("on"), err ? 4200 : 1800);
+  };
+  const paintSel = () => { for (const b of wrap.querySelectorAll(".bar")) b.classList.toggle("sel", S.sel.has(b.dataset.src)); };
+  const callOf = src => S.tweens.find(t => t.src === src);
+  const spanOf = tw => tw.duration * ((tw.repeat > 0 ? tw.repeat : 0) + 1);
+
   wrap.addEventListener("pointerdown", e => {
-    if (!MS || e.button !== 0) return;
-    pause();
-    wrap.setPointerCapture(e.pointerId);
-    const left = wrap.getBoundingClientRect().left;
-    let raf = 0, last = e.clientX;
-    const apply = () => { raf = 0; seek(((last - left) / trackW()) * dur()); };
-    apply();
-    const move = ev => { last = ev.clientX; raf ||= requestAnimationFrame(apply); };
-    const up = () => { wrap.removeEventListener("pointermove", move); wrap.removeEventListener("pointerup", up); wrap.removeEventListener("pointercancel", up); };
-    wrap.addEventListener("pointermove", move);
-    wrap.addEventListener("pointerup", up);
-    wrap.addEventListener("pointercancel", up);
+    if (!MS || e.button !== 0 || e.target.closest(".flag")) return;
+    if (e.target.closest(".ruler")) return scrub(e);
+    const bar = e.target.closest(".bar");
+    if (bar && !bar.classList.contains("ro")) return grab(e, bar);
+    marquee(e);
   });
+
+  // Follow the pointer once per frame, release on up/cancel
+  function drag(e, move, up) {
+    wrap.setPointerCapture(e.pointerId);
+    let raf = 0, last = e;
+    const onMove = ev => { last = ev; raf ||= requestAnimationFrame(() => { raf = 0; move(last); }); };
+    const onUp = ev => {
+      cancelAnimationFrame(raf);
+      wrap.removeEventListener("pointermove", onMove); wrap.removeEventListener("pointerup", onUp); wrap.removeEventListener("pointercancel", onUp);
+      if (raf || ev.type === "pointerup") move(ev);
+      up(ev);
+    };
+    wrap.addEventListener("pointermove", onMove);
+    wrap.addEventListener("pointerup", onUp);
+    wrap.addEventListener("pointercancel", onUp);
+  }
+
+  function scrub(e) {
+    pause();
+    seek(tAt(e.clientX));
+    drag(e, ev => seek(tAt(ev.clientX)), () => {});
+  }
+
+  // Snap: playhead, 0 and the end, every other tween's start and end, and the beat grid when the scene has one.
+  // Off with the Snap toggle (S) or while Alt is held; unsnapped moves land on whole frames.
+  function snapTargets(exclude) {
+    const ts = [0, dur(), S.t];
+    for (const tw of S.tweens) if (!exclude.has(tw.src)) { ts.push(tw.start); if (tw.repeat >= 0) ts.push(tw.start + spanOf(tw)); }
+    const B = beats();
+    if (B && B.beats) ts.push(...B.beats);
+    return ts;
+  }
+  function snapTo(edges, dt, targets, free) {
+    const toFrame = v => Math.round(v * fps()) / fps();
+    if (!S.snap || free) return { dt: toFrame(dt), at: null };
+    const pps = trackW() / dur();
+    let best = null;
+    for (const e of edges) for (const T of targets) {
+      const d = T - (e + dt);
+      if (Math.abs(d) * pps < 7 && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, T };
+    }
+    return best ? { dt: dt + best.d, at: best.T } : { dt: toFrame(dt), at: null };
+  }
+  const snapLine = at => {
+    let l = wrap.querySelector(".snapline");
+    if (at == null) { if (l) l.remove(); return; }
+    if (!l) wrap.append(l = h("div", { class: "snapline" }));
+    l.style.left = x(at) + "px";
+  };
+  const tip = (ev, text) => {
+    let t = document.querySelector(".dragtip");
+    if (text == null) { if (t) t.remove(); return; }
+    if (!t) document.body.append(t = h("div", { class: "dragtip" }));
+    t.style.left = ev.clientX + "px";
+    t.style.top = ev.clientY + "px";
+    t.textContent = text;
+  };
+  const sgn = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(3) + "s";
+
+  function grab(e, bar) {
+    const src = bar.dataset.src, tw = S.tweens[+bar.dataset.i];
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      if (S.sel.has(src)) S.sel.delete(src); else S.sel.add(src);
+      paintSel();
+      return;
+    }
+    const edge = e.target.classList.contains("hd") ? (e.target.classList.contains("l") ? "l" : "r") : null;
+    if (edge || !S.sel.has(src)) { S.sel = new Set([src]); paintSel(); }
+    if (edge && (tw.repeat || tw.stagger)) {
+      toast(tw.stagger ? "Staggered tween: double-click it to set duration and stagger" : "Looping tween: change its duration in code", true);
+      return;
+    }
+    pause();
+    // Every bar of every selected call moves (a call in a loop draws several bars)
+    const bars = [...wrap.querySelectorAll(".bar")].filter(b => S.sel.has(b.dataset.src)).map(b => ({ b, tw: S.tweens[+b.dataset.i] }));
+    const targets = snapTargets(S.sel);
+    const x0 = e.clientX, pps = trackW() / dur(), step = 1 / fps();
+    const minStart = Math.min(...bars.map(o => o.tw.start));
+    const start = tw.start, end = tw.start + tw.duration;
+    let moved = false, result = null;
+    drag(e, ev => {
+      const dx = ev.clientX - x0;
+      if (!moved && Math.abs(dx) < 3) return;
+      moved = true;
+      document.body.classList.add("dragging");
+      const raw = dx / pps;
+      if (!edge) {
+        const edges = bars.flatMap(o => [o.tw.start, o.tw.start + spanOf(o.tw)]);
+        let { dt, at } = snapTo(edges, raw, targets, ev.altKey);
+        dt = Math.max(dt, -minStart);
+        for (const o of bars) o.b.style.left = x(o.tw.start + dt) + "px";
+        snapLine(at);
+        tip(ev, `${sgn(dt)} · starts ${(start + dt).toFixed(3)}s${S.sel.size > 1 ? ` · ${S.sel.size} tweens` : ""}`);
+        result = Math.abs(dt) > 1e-4 ? [...S.sel].map(s => ({ tween: s, shift: +dt.toFixed(4) })) : null;
+      } else if (edge === "r") {
+        const { dt, at } = snapTo([end], raw, targets, ev.altKey);
+        const d = Math.max(step, tw.duration + dt);
+        bar.style.width = Math.max(3, x(d)) + "px";
+        snapLine(at);
+        tip(ev, `duration ${d.toFixed(3)}s (${sgn(d - tw.duration)})`);
+        result = Math.abs(d - tw.duration) > 1e-4 ? [{ tween: src, dur: +d.toFixed(4) }] : null;
+      } else {
+        let { dt, at } = snapTo([start], raw, targets, ev.altKey);
+        dt = Math.min(Math.max(dt, -start), tw.duration - step);
+        bar.style.left = x(start + dt) + "px";
+        bar.style.width = Math.max(3, x(tw.duration - dt)) + "px";
+        snapLine(at);
+        tip(ev, `starts ${(start + dt).toFixed(3)}s · duration ${(tw.duration - dt).toFixed(3)}s`);
+        result = Math.abs(dt) > 1e-4 ? [{ tween: src, shift: +dt.toFixed(4), dur: +(tw.duration - dt).toFixed(4) }] : null;
+      }
+    }, () => {
+      document.body.classList.remove("dragging");
+      snapLine(null);
+      tip(null);
+      if (moved && result) commit(result);
+      else if (moved) drawTimeline();
+    });
+  }
+
+  function marquee(e) {
+    const add = e.shiftKey || e.ctrlKey || e.metaKey;
+    const base = new Set(add ? S.sel : []);
+    const x0 = e.clientX, y0 = e.clientY;
+    let box = null;
+    drag(e, ev => {
+      if (!box && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
+      if (!box) wrap.append(box = h("div", { class: "marquee" }));
+      const r = wrap.getBoundingClientRect();
+      const L = Math.min(x0, ev.clientX), R = Math.max(x0, ev.clientX), T = Math.min(y0, ev.clientY), Bt = Math.max(y0, ev.clientY);
+      Object.assign(box.style, { left: L - r.left + "px", top: T - r.top + "px", width: R - L + "px", height: Bt - T + "px" });
+      S.sel = new Set(base);
+      for (const b of wrap.querySelectorAll(".bar:not(.ro)")) {
+        const q = b.getBoundingClientRect();
+        if (q.right > L && q.left < R && q.bottom > T && q.top < Bt) S.sel.add(b.dataset.src);
+      }
+      paintSel();
+    }, () => {
+      if (box) { box.remove(); return; }
+      if (!add && S.sel.size) { S.sel.clear(); paintSel(); }
+      pause();
+      seek(tAt(x0));
+    });
+  }
+
+  async function commit(moves) {
+    document.body.classList.add("saving");
+    try {
+      const r = await api(`/api/scenes/${S.id}/edit`, { method: "POST", body: { moves, ripple: S.ripple, tweens: S.tweens } });
+      setHist(r);
+      if (!r.changes || !r.changes.length) { document.body.classList.remove("saving"); drawTimeline(); }
+    } catch (err) {
+      document.body.classList.remove("saving");
+      toast(err.message, true);
+      drawTimeline();
+    }
+  }
+  function nudge(frames) {
+    if (!S.sel.size) return;
+    const dt = frames / fps();
+    if ([...S.sel].some(s => (callOf(s) || { start: 0 }).start + dt < -1e-6)) return;
+    commit([...S.sel].map(s => ({ tween: s, shift: +dt.toFixed(4) })));
+  }
+
+  // Undo / redo of studio edits (the server keeps the before and after of every file an edit wrote)
+  function setHist(r) {
+    if (!r || r.undo == null) return;
+    $("#undo").disabled = !r.undo;
+    $("#redo").disabled = !r.redo;
+    $("#undo").title = `Undo edit (Ctrl+Z)${r.undo ? ` · ${r.undo} step${r.undo > 1 ? "s" : ""}` : ""}`;
+  }
+  async function undo(what) {
+    if (!S.id) return;
+    try { setHist(await api(`/api/scenes/${S.id}/${what}`, { method: "POST" })); toast(what === "undo" ? "Undone" : "Redone"); }
+    catch (err) { toast(err.message, true); api(`/api/scenes/${S.id}/edit`).then(setHist, () => {}); }
+  }
+  $("#undo").addEventListener("click", () => undo("undo"));
+  $("#redo").addEventListener("click", () => undo("redo"));
+
+  // Zoom: 1x (fit) to 64x, keeping the time under the anchor (the pointer, else the playhead) in place
+  function setZoom(z, anchorX) {
+    z = Math.max(1, Math.min(64, z));
+    if (Math.abs(z - S.zoom) < 1e-3) return;
+    const lanesLeft = tracksEl.getBoundingClientRect().left + labelsW();
+    const ax = anchorX ?? Math.min(Math.max(lanesLeft + x(S.t) - tracksEl.scrollLeft, lanesLeft), lanesLeft + baseW());
+    const t = tAt(ax);
+    S.zoom = z;
+    $("#zoom").value = Math.round(Math.log2(z) / 6 * 100);
+    drawTimeline();
+    tracksEl.scrollLeft = x(t) - (ax - lanesLeft);
+  }
+  $("#zoom").addEventListener("input", e => setZoom(2 ** (+e.target.value / 100 * 6)));
+  tracksEl.addEventListener("wheel", e => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    setZoom(S.zoom * Math.exp(-e.deltaY * 0.0025), e.clientX);
+  }, { passive: false });
+  const setSnap = v => { S.snap = v; $("#snap").setAttribute("aria-pressed", v); };
+  const setRipple = v => { S.ripple = v; $("#ripple").setAttribute("aria-pressed", v); };
+  $("#snap").addEventListener("click", () => setSnap(!S.snap));
+  $("#ripple").addEventListener("click", () => setRipple(!S.ripple));
+
+  // Timeline height: drag its top edge
+  try { const th = localStorage.getItem("ms-tracks-h"); if (th) document.documentElement.style.setProperty("--tracks-h", th); } catch { /* private mode */ }
+  $("#tl-grip").addEventListener("pointerdown", e => {
+    const g = e.currentTarget, y0 = e.clientY, h0 = tracksEl.offsetHeight;
+    g.setPointerCapture(e.pointerId);
+    g.classList.add("on");
+    const mv = ev => {
+      const v = Math.round(Math.max(90, Math.min(innerHeight * 0.7, h0 - (ev.clientY - y0)))) + "px";
+      document.documentElement.style.setProperty("--tracks-h", v);
+      try { localStorage.setItem("ms-tracks-h", v); } catch { /* private mode */ }
+    };
+    const up = () => { g.classList.remove("on"); g.removeEventListener("pointermove", mv); g.removeEventListener("pointerup", up); };
+    g.addEventListener("pointermove", mv);
+    g.addEventListener("pointerup", up);
+  });
+
+  // Theme: the saved choice, else the system's (dark when it says nothing)
+  function flipTheme() {
+    const root = document.documentElement;
+    const now = root.dataset.theme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+    root.dataset.theme = now === "light" ? "dark" : "light";
+    try { localStorage.setItem("ms-theme", root.dataset.theme); } catch { /* private mode */ }
+  }
+  for (const b of document.querySelectorAll("[data-theme-toggle]")) b.addEventListener("click", flipTheme);
 
   // ── tracked + highlight ─────────────────────────────────────────
   function drawTracked() {
@@ -561,6 +838,7 @@
     const r = await fetch(`/api/scenes/${S.id}/edit`, { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ ops: [op], tweens: S.tweens }) }).then(r => r.json());
     if (r.error) { $("#insp-msg").textContent = r.error; return; }
+    setHist(r);
     insp.hidden = true;
   }
   $("#insp-form").addEventListener("submit", applyInspect);
@@ -761,9 +1039,22 @@
   $("#to-start").addEventListener("click", () => { pause(); seek(0); });
 
   addEventListener("keydown", e => {
-    if (e.target.closest("textarea, input, select") || !home.hidden) return;
-    const k = e.key;
+    if (e.target.closest("textarea, input:not([type=range]), select")) return;
+    const k = e.key, mod = e.ctrlKey || e.metaKey;
+    if ((k === "t" || k === "T") && !mod) { flipTheme(); return; }
+    if (!home.hidden) return;
+    if (mod && (k === "z" || k === "Z")) { e.preventDefault(); undo(e.shiftKey ? "redo" : "undo"); return; }
+    if (mod && (k === "y" || k === "Y")) { e.preventDefault(); undo("redo"); return; }
+    if (mod && (k === "a" || k === "A")) { e.preventDefault(); S.sel = new Set(S.tweens.filter(t => t.src).map(t => t.src)); paintSel(); return; }
+    if (mod) return;
     if (k === " ") { e.preventDefault(); toggle(); }
+    else if (k === "," || k === "<") nudge(e.shiftKey ? -10 : -1);
+    else if (k === "." || k === ">") nudge(e.shiftKey ? 10 : 1);
+    else if (k === "=" || k === "+") setZoom(S.zoom * 1.5);
+    else if (k === "-" || k === "_") setZoom(S.zoom / 1.5);
+    else if (k === "\\") setZoom(1);
+    else if (k === "s" || k === "S") setSnap(!S.snap);
+    else if (k === "r" || k === "R") setRipple(!S.ripple);
     else if (k === "ArrowLeft" || k === "ArrowRight") { e.preventDefault(); step((k === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10 : 1)); }
     else if (k === "Home") { pause(); seek(0); }
     else if (k === "End") { pause(); seek(dur()); }
@@ -771,12 +1062,12 @@
     else if (k === "l" || k === "L") setLoop(!S.loop);
     else if (k === "i" || k === "I") setOnion(!S.onion);
     else if (k === "m" || k === "M") setSound(!S.sound);
-    else if (k === "Escape") endPin();
+    else if (k === "Escape") { endPin(); if (S.sel.size) { S.sel.clear(); paintSel(); } }
     else if ("1234".includes(k)) setRate([0.1, 0.25, 0.5, 1][+k - 1]);
   });
   // The well changes size when the timeline grows (more lanes) as well as on window resize
   new ResizeObserver(() => fit()).observe(well);
-  new ResizeObserver(() => S.info && drawTimeline()).observe(wrap);
+  new ResizeObserver(() => S.info && drawTimeline()).observe(tracksEl);
 
   // ── live reload ─────────────────────────────────────────
   function connect() {

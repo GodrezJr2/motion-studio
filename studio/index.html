@@ -6,7 +6,8 @@
 <title>Motion Studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@400..700&family=Funnel+Sans:ital,wght@0,300..700;1,400&family=Martian+Mono:wdth,wght@75..112.5,300..600&display=swap" rel="stylesheet">
+<script>/* theme before first paint: saved choice, else the system's */ try { const t = localStorage.getItem("ms-theme"); if (t) document.documentElement.dataset.theme = t; } catch {}</script>
 <link rel="stylesheet" href="/studio/studio.css">
 </head>
 <body>
@@ -17,6 +18,7 @@
       <span id="lint-state" class="mute"></span>
       <span id="score" class="score" title="Lint score">—</span>
       <span id="live" class="live" title="Live reload"></span>
+      <button class="theme" data-theme-toggle title="Light / dark (T)" aria-label="Toggle light or dark"><svg class="moon" viewBox="0 0 16 16"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1z"/></svg><svg class="sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.8"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"/></svg></button>
     </div>
   </header>
 
@@ -48,7 +50,7 @@
       <button role="tab" data-tab="sounds" aria-selected="false">Sounds</button>
     </div>
     <div class="panel" id="panel-notes">
-      <button class="btn wide" id="add-note"><span>+</span> Pin a note <kbd>N</kbd></button>
+      <button class="btn wide primary" id="add-note"><span>+</span> Pin a note <kbd>N</kbd></button>
       <ol class="notes" id="notes"></ol>
     </div>
     <div class="panel" id="panel-lint" hidden>
@@ -91,6 +93,7 @@
   </div>
 
   <footer class="timeline">
+    <div class="tl-grip" id="tl-grip" title="Drag to resize the timeline"></div>
     <div class="transport">
       <button class="icon" id="to-start" title="Start (Home)"><svg viewBox="0 0 16 16"><path d="M3 3v10M13 3 6 8l7 5z"/></svg></button>
       <button class="icon" id="step-back" title="Previous frame (←)"><svg viewBox="0 0 16 16"><path d="M11 3 5 8l6 5z"/></svg></button>
@@ -103,9 +106,15 @@
       <button class="toggle" id="loop" aria-pressed="true" title="Loop (L)">Loop</button>
       <button class="toggle" id="sound" aria-pressed="true" title="Sound (M)">Sound</button>
       <button class="toggle" id="onion" aria-pressed="false" title="Show issue regions on stage (I)">Issues on stage</button>
+      <span class="sep"></span>
+      <button class="icon" id="undo" title="Undo edit (Ctrl+Z)" disabled><svg class="st" viewBox="0 0 16 16"><path d="M5.5 3.5 2.5 6.5l3 3"/><path d="M2.5 6.5h7a4 4 0 0 1 0 8H7"/></svg></button>
+      <button class="icon" id="redo" title="Redo (Ctrl+Shift+Z)" disabled><svg class="st" viewBox="0 0 16 16"><path d="m10.5 3.5 3 3-3 3"/><path d="M13.5 6.5h-7a4 4 0 0 0 0 8H9"/></svg></button>
+      <button class="toggle" id="snap" aria-pressed="true" title="Snap to playhead, beats and other tweens (S; hold Alt to drag free)">Snap</button>
+      <button class="toggle" id="ripple" aria-pressed="false" title="Ripple: moving a tween drags the tweens written after it (R)">Ripple</button>
+      <label class="zoom" title="Zoom the timeline (Ctrl+wheel, + / −, \ to fit)">zoom <input type="range" id="zoom" min="0" max="100" value="0"></label>
     </div>
     <div class="tracks" id="tracks">
-      <div class="labels" id="labels"></div>
+      <div class="labels"><div class="corner">Layers</div><div id="labels"></div></div>
       <div class="lanes-wrap" id="lanes-wrap">
         <div class="ruler" id="ruler"></div>
         <div class="lanes" id="lanes"></div>
@@ -118,6 +127,7 @@
     <header class="home-top">
       <a class="mark" href="#">Motion <em>Studio</em></a>
       <span class="live" id="home-live" title="Live reload"></span>
+      <button class="theme" data-theme-toggle title="Light / dark (T)" aria-label="Toggle light or dark"><svg class="moon" viewBox="0 0 16 16"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1z"/></svg><svg class="sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.8"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"/></svg></button>
     </header>
     <section class="home-head">
       <h1>Projects <small id="proj-count"></small></h1>
@@ -150,6 +160,7 @@
     <div id="viewer-body"></div>
   </dialog>
   <audio id="snd" preload="auto"></audio>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="/vendor/gsap/gsap.min.js"></script>
   <script src="/studio/studio.js"></script>

@@ -82,7 +82,7 @@ function opSplices(src, call, tw, op) {
 }
 
 // Apply ops against the live tween list (MS.tweens() with src). Returns the changed lines per file.
-export function applyEdits(id, tweens, ops, { dry = false } = {}) {
+export function applyEdits(id, tweens, ops, { dry = false, log = null } = {}) {
   const targets = [];
   for (const op of ops) {
     if (op.after != null) {
@@ -112,7 +112,77 @@ export function applyEdits(id, tweens, ops, { dry = false } = {}) {
     for (const [s, e, text] of splices) next = next.slice(0, s) + text + next.slice(e);
     const before = src.split("\n"), after = next.split("\n");
     for (let i = 0; i < after.length; i++) if (before[i] !== after[i]) changes.push({ file, line: i + 1, before: before[i], after: after[i] });
-    if (!dry) fs.writeFileSync(full, next);
+    if (!dry) { fs.writeFileSync(full, next); if (log) log.push({ full, before: src, after: next }); }
   }
   return changes;
+}
+
+// How a call's position argument places it, in GSAP's terms: "abs" (a number), "prevStart" ("<", "<0.2"),
+// "prevEnd" (">", ">0.1"), "end" (absent, "+=0.1", "-=0.3": the timeline's end when the call ran), "label" (a label
+// or an expression)
+function posKind(call) {
+  const method = call.callee.property.name;
+  const pos = call.arguments[method === "fromTo" ? 3 : 2];
+  if (!pos) return "none";
+  if (pos.type === "Literal" && typeof pos.value === "number") return "abs";
+  if (pos.type === "Literal" && typeof pos.value === "string") {
+    if (pos.value.startsWith("<")) return "prevStart";
+    if (pos.value.startsWith(">")) return "prevEnd";
+    if (/^[-+]=/.test(pos.value)) return "end";
+  }
+  return "label";
+}
+
+// Timeline edits the way an editor means them: the selected tweens move by `shift` (and/or get a new `dur`), and
+// nothing else moves. In code a relative position follows what was written before it ("<" the previous start, ">"
+// the previous end, none or "+=" the timeline's end so far), so moving or stretching one call drags its followers,
+// and a moved follower must not be shifted twice. Replay each timeline's calls in source order (the order GSAP placed
+// them) under the old and the new layout, and give every call the position change that puts it where it is meant
+// to be. The stage reloads from the rewritten source, so whatever this model misses shows at once (and undoes).
+//   items: [{ tween: src | id | "#i", shift?: s, dur?: d }]
+export function applyMoves(id, tweens, items, opts = {}) {
+  const want = new Map();
+  for (const it of items) {
+    const tw = findTween(tweens, it.tween);
+    if (!want.has(tw.src)) want.set(tw.src, { shift: +it.shift || 0, dur: it.dur != null ? +it.dur : null });
+  }
+  // One entry per source call (a call in a loop makes several tweens: they move together)
+  const calls = new Map();
+  for (const tw of tweens) if (tw.src && !calls.has(tw.src)) calls.set(tw.src, tw);
+  const asts = new Map();
+  const astOf = file => {
+    if (!asts.has(file)) asts.set(file, acorn.parse(fs.readFileSync(path.join(sceneDir(id), path.basename(file)), "utf8"),
+      { ecmaVersion: "latest", sourceType: "script", locations: true, allowReturnOutsideFunction: true }));
+    return asts.get(file);
+  };
+  const key = src => { const [f, l, c] = src.split(":"); return [f, +l, +c]; };
+  const order = [...calls.values()].sort((a, b) => {
+    const [fa, la, ca] = key(a.src), [fb, lb, cb] = key(b.src);
+    return (a.par ?? 0) - (b.par ?? 0) || fa.localeCompare(fb) || la - lb || ca - cb;
+  });
+  const ops = [];
+  let par, o, n; // running layout of the current timeline, old (o) and new (n): previous start, previous end, end
+  for (const tw of order) {
+    if (tw.par !== par || !o) { par = tw.par; o = { ps: 0, pe: 0, end: 0 }; n = { ...o }; }
+    const w = want.get(tw.src);
+    const desired = w ? w.shift : 0;
+    const d0 = tw.duration * ((tw.repeat > 0 ? tw.repeat : 0) + 1);
+    const d1 = w && w.dur != null ? w.dur * ((tw.repeat > 0 ? tw.repeat : 0) + 1) : d0;
+    const [file, line, col] = key(tw.src);
+    const call = callAt(astOf(file), line, col);
+    const kind = call ? posKind(call) : "abs";
+    const ref = kind === "prevStart" ? "ps" : kind === "prevEnd" ? "pe" : kind === "end" || kind === "none" ? "end" : null;
+    const inherent = ref ? n[ref] - o[ref] : 0;
+    const op = { tween: tw.src };
+    if (Math.abs(desired - inherent) > 1e-4) {
+      if (kind === "none" || kind === "label") op.at = Math.max(0, tw.start + desired); // pin it absolute
+      else op.shift = desired - inherent;
+    }
+    if (w && w.dur != null && Math.abs(w.dur - tw.duration) > 1e-4) op.dur = Math.max(0.01, w.dur);
+    if (Object.keys(op).length > 1) ops.push(op);
+    const s0 = tw.start, s1 = tw.start + desired;
+    o = { ps: s0, pe: s0 + d0, end: Math.max(o.end, s0 + d0) };
+    n = { ps: s1, pe: s1 + d1, end: Math.max(n.end, s1 + d1) };
+  }
+  return { ops, changes: ops.length ? applyEdits(id, tweens, ops, opts) : [] };
 }
