@@ -69,6 +69,41 @@ function projects() {
 
 // `ms make` progress for the card: running, failed or done (the last lines of its log)
 const making = new Map(); // id -> child process started by POST /api/make
+// One agent job per scene (the Agent tab): `ms ask` or `ms critic --run` as a child process, its output lines streamed
+// over SSE as { type: "job", scene, kind, line } and { ..., done, code } when it exits. Stop kills the whole tree.
+const jobs = new Map(); // id -> { kind, child, lines, at }
+function startJob(id, kind, args) {
+  const child = spawn(process.execPath, [path.join(ROOT, "bin", "ms.mjs"), ...args], { cwd: ROOT, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, NODE_NO_WARNINGS: "1" } });
+  const job = { kind, child, lines: [], at: Date.now() };
+  jobs.set(id, job);
+  let buf = "";
+  const out = d => {
+    buf += d;
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, i).trimEnd(); buf = buf.slice(i + 1);
+      if (!line) continue;
+      job.lines.push(line); if (job.lines.length > 400) job.lines.shift();
+      broadcast({ type: "job", scene: id, kind, line });
+    }
+  };
+  child.stdout.on("data", out); child.stderr.on("data", out);
+  child.on("exit", code => {
+    if (buf.trim()) out("\n");
+    if (jobs.get(id) === job) jobs.delete(id);
+    broadcast({ type: "job", scene: id, kind, done: true, code: job.stopped ? "stopped" : code });
+  });
+  return job;
+}
+function stopJob(id) {
+  const job = jobs.get(id);
+  if (!job) return false;
+  job.stopped = true;
+  if (process.platform === "win32") spawn("taskkill", ["/pid", String(job.child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+  else job.child.kill("SIGTERM");
+  return true;
+}
 function makeState(ms) {
   const m = readJson(path.join(ms, "make.json"));
   if (!m) return null;
@@ -258,7 +293,7 @@ export function startServer({ port = 0, host = "127.0.0.1", watch = false } = {}
         newScene(String(b.id || ""), { format: b.format, kind: b.kind || undefined, title: b.title || undefined });
         return send(res, 201, { id: b.id });
       }
-      m = p.match(/^\/api\/scenes\/([^/]+)\/(audio|files|render|poster|duplicate|sounds|edit|undo|redo)$/);
+      m = p.match(/^\/api\/scenes\/([^/]+)\/(audio|files|render|poster|duplicate|sounds|edit|undo|redo|agent|critic|stop)$/);
       if (m) {
         const [, id, what] = m;
         if (!validId(id)) return send(res, 404, { error: "no such scene" });
@@ -294,6 +329,21 @@ export function startServer({ port = 0, host = "127.0.0.1", watch = false } = {}
           return send(res, 200, historyState(id));
         }
         if (what === "edit" && req.method === "GET") return send(res, 200, historyState(id));
+        if (what === "agent" && req.method === "GET") {
+          const { readAgent } = await import("./ask.mjs");
+          const j = jobs.get(id);
+          return send(res, 200, { ...readAgent(id), job: j ? { kind: j.kind, lines: j.lines, at: j.at } : null });
+        }
+        if ((what === "agent" || what === "critic") && req.method === "POST") {
+          if (jobs.has(id)) return send(res, 409, { error: `the ${jobs.get(id).kind} is still working` });
+          const b = await body(req);
+          const prompt = String(b.prompt || "").trim();
+          if (what === "agent" && !prompt) return send(res, 400, { error: "say what to change" });
+          const agent = /^[a-z]+$/.test(b.agent || "") ? ["--agent", b.agent] : [];
+          startJob(id, what, what === "agent" ? ["ask", id, prompt, ...(b.fresh ? ["--fresh"] : []), ...agent] : ["critic", id, "--run", ...agent]);
+          return send(res, 202, { kind: what });
+        }
+        if (what === "stop" && req.method === "POST") return send(res, stopJob(id) ? 200 : 409, { stopped: true });
         if (what === "sounds") {
           const { kitInfo } = await import("./audio.mjs");
           return send(res, 200, await kitInfo(id));

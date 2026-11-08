@@ -48,6 +48,7 @@
       <button role="tab" data-tab="lint" aria-selected="false">Lint <small id="issues-count"></small></button>
       <button role="tab" data-tab="files" aria-selected="false">Files <small id="files-count"></small></button>
       <button role="tab" data-tab="sounds" aria-selected="false">Sounds</button>
+      <button role="tab" data-tab="agent" aria-selected="false">Agent <small id="agent-dot"></small></button>
     </div>
     <div class="panel" id="panel-notes">
       <button class="btn wide primary" id="add-note"><span>+</span> Pin a note <kbd>N</kbd></button>
@@ -68,6 +69,30 @@
       </div>
       <p class="drop mute" id="drop">Drop music, logos or footage here. They land in the scene folder; tell the AI how to use them in a note.</p>
       <div id="files"></div>
+    </div>
+    <div class="panel" id="panel-agent" hidden>
+      <section class="critic">
+        <div class="crit-head">
+          <div><span class="eyebrow">Critic</span> <b id="crit-verdict" class="verdict">no rounds</b></div>
+          <button class="btn" id="run-critic" title="A fresh judge looks at the sheet and key frames, scores the piece and lists what to fix">Run critic</button>
+        </div>
+        <div class="scores" id="crit-scores"></div>
+        <ol class="crit-issues" id="crit-issues"></ol>
+      </section>
+      <section class="chat">
+        <span class="eyebrow">Builder agent</span>
+        <ol class="turns" id="turns"></ol>
+        <pre class="joblog" id="joblog" hidden></pre>
+        <form id="ask-form" class="ask">
+          <textarea id="ask-text" rows="3" placeholder="Ask for a change: &ldquo;land the title softer&rdquo;, &ldquo;cut the dead air at 4s&rdquo;. Open notes and critic items go along."></textarea>
+          <div class="ask-acts">
+            <button type="button" class="btn" id="ask-notes" title="Ask the agent to work through every open note and critic item">Fix open notes</button>
+            <label class="mute fresh"><input type="checkbox" id="ask-fresh"> new session</label>
+            <button type="button" class="btn" id="ask-stop" hidden>Stop</button>
+            <button type="submit" class="btn primary" id="ask-send">Send <kbd>Ctrl &#8629;</kbd></button>
+          </div>
+        </form>
+      </section>
     </div>
     <div class="panel" id="panel-sounds" hidden>
       <p class="mute kit-note" id="kit-note">Loading kit…</p>

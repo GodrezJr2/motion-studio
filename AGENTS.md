@@ -122,6 +122,7 @@ each timeline's calls in source order and rewrites relative positions (`"<"`, `"
 ripple mode (R) shifts them along instead. Ctrl+Z / Ctrl+Shift+Z undo and redo every studio edit (history in server
 memory, per scene); a scene.js changed outside the studio since then refuses the undo (409), so your own edits are
 never rolled back by it. Bars of preset moves (no source line) are read-only.
+The eye on a layer label hides it in the preview (Alt-click solos it); studio only, nothing is written.
 
 Reply in one or two sentences: what changed (ease, duration, offset, path) and the lint result. Resolve only when
 the note is addressed; if you disagree or need their eye, reply without `--resolve`.
@@ -195,6 +196,11 @@ Choose with MOTION.md `builder.agent` / `critic.agent`, `--agent` (and `ms make 
 MOTION.md `model`/`effort` belong to the agent named there; another agent runs on its own default unless
 `--model` is given (`--model provider/model` for opencode). Keep the critic a different model from the builder.
 Adding an agent is one entry in `AGENTS`: its flags and how to read its event stream into `{ text, session }`.
+
+`ms ask <scene> "<request>" [--fresh]` hands one request to the builder agent with the open notes and critic items
+attached, and resumes its session next time (`.ms/agent.json`). The studio's Agent tab runs it (POST
+`/api/scenes/:id/agent {prompt, fresh?}`), runs the critic (POST `/critic`), streams progress as SSE `job` events,
+stops a run (POST `/stop`) and shows the critic ledger: scores, open items (click to jump to the moment).
 
 Without any of these, an agent in an interactive session can still do the whole loop by hand: `ms critic <scene>`
 writes the packet, a fresh session judges it, `ms critic <scene> --record answer.md` files the verdict.

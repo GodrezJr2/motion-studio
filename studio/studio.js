@@ -25,6 +25,7 @@
     t: 0, playing: false, rate: 1, loop: true, onion: false, sound: true, audio: null, files: [], pinning: false, selNote: null, hl: null, linting: false,
     sel: new Set(), // selected tweens, by source call (scene.js:12:4): survives the reload an edit causes
     zoom: 1, snap: true, ripple: false,
+    hidden: new Set(), // layers hidden in the preview (group keys); studio only, never written to the scene
   };
   let MS = null;
   let loadToken = 0;
@@ -76,8 +77,9 @@
     if (wasPlaying) play();
     loadAudio();
     document.body.classList.remove("saving");
-    if (!keep) { S.sel.clear(); api(`/api/scenes/${id}/edit`).then(setHist, () => {}); }
+    if (!keep) { S.sel.clear(); S.hidden.clear(); api(`/api/scenes/${id}/edit`).then(setHist, () => {}); }
     await Promise.all([loadNotes(), loadReport(), loadFiles()]);
+    if (!$("#panel-agent").hidden) loadAgent();
   }
 
   // ── stage ─────────────────────────────────────────
@@ -230,12 +232,15 @@
 
     wrap.style.width = W + 16 + "px";
     $("#labels").replaceChildren(...S.groups.map(g => h("div", {
-      "data-key": g.key, title: g.key, class: "row" + (g.names.includes(S.hl) ? " hl" : ""), style: `height:${g.h}px`,
+      "data-key": g.key, title: g.key, class: "row" + (g.names.includes(S.hl) ? " hl" : "") + (S.hidden.has(g.key) ? " off" : ""), style: `height:${g.h}px`,
       onmouseenter: () => highlight(g.names[0]), onmouseleave: () => highlight(null),
     }, h("span", { class: "sw", style: `background:var(--k-${kindOf(g.tweens.flatMap(t => t.props))})` }),
-      issuesOf(g).length ? h("i", {}, "●") : null, g.names.length > 2 ? `${g.names[0]} +${g.names.length - 1}` : g.key)));
+      issuesOf(g).length ? h("i", {}, "●") : null, h("span", { class: "nm" }, g.names.length > 2 ? `${g.names[0]} +${g.names.length - 1}` : g.key),
+      h("button", { class: "eye", title: S.hidden.has(g.key) ? "Show this layer (preview only)" : "Hide this layer in the preview (Alt-click: solo)",
+        "aria-pressed": S.hidden.has(g.key), onclick: e => { e.stopPropagation(); toggleLayer(g, e.altKey); } }, eyeIcon(S.hidden.has(g.key))))));
+    applyHidden();
 
-    $("#lanes").replaceChildren(...S.groups.map(g => h("div", { class: "lane" + (g.names.includes(S.hl) ? " hl" : ""), style: `height:${g.h}px` },
+    $("#lanes").replaceChildren(...S.groups.map(g => h("div", { class: "lane" + (g.names.includes(S.hl) ? " hl" : "") + (S.hidden.has(g.key) ? " off" : ""), style: `height:${g.h}px` },
       issuesOf(g).map(i => h("div", { class: `shade ${i.severity}`, style: `left:${x(i.t0)}px;width:${Math.max(3, x(i.t1) - x(i.t0))}px` })),
       g.tweens.map(tw => {
         const span = tw.repeat < 0 ? dur() - tw.start : tw.duration * (tw.repeat + 1);
@@ -541,6 +546,31 @@
       onmouseenter: () => highlight(n), onmouseleave: () => highlight(null),
     }, n)));
   }
+  // Layer eye: hide a layer in the preview to see what is under it. A stylesheet !important beats the inline opacity
+  // GSAP writes, so the timeline keeps running untouched; nothing is saved to the scene. Alt-click solos a layer.
+  const eyeIcon = off => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 16 16");
+    svg.innerHTML = off ? '<path d="M2 8s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4z" opacity=".35"/><path d="M3 13 13 3"/>'
+      : '<path d="M2 8s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4z"/><circle cx="8" cy="8" r="1.8"/>';
+    return svg;
+  };
+  function toggleLayer(g, solo) {
+    if (solo) {
+      const only = S.groups.every(o => o === g ? !S.hidden.has(o.key) : S.hidden.has(o.key));
+      S.hidden = new Set(only ? [] : S.groups.filter(o => o !== g).map(o => o.key));
+    } else if (S.hidden.has(g.key)) S.hidden.delete(g.key);
+    else S.hidden.add(g.key);
+    drawTimeline();
+  }
+  function applyHidden() {
+    const doc = frame.contentDocument;
+    if (!doc || !doc.head) return;
+    if (!doc.getElementById("ms-studio-hide")) doc.head.append(Object.assign(doc.createElement("style"), { id: "ms-studio-hide", textContent: "[data-ms-hide]{opacity:0!important}" }));
+    for (const el of doc.querySelectorAll("[data-ms-hide]")) el.removeAttribute("data-ms-hide");
+    for (const g of S.groups) if (S.hidden.has(g.key)) for (const n of g.names) elementOf(n)?.setAttribute("data-ms-hide", "");
+  }
+
   function highlight(name) {
     S.hl = name;
     for (const [i, g] of S.groups.entries()) {
@@ -1020,9 +1050,88 @@
     $("#panel-lint").hidden = name !== "lint";
     $("#panel-files").hidden = name !== "files";
     $("#panel-sounds").hidden = name !== "sounds";
+    $("#panel-agent").hidden = name !== "agent";
     if (name === "sounds") loadSounds();
+    if (name === "agent") loadAgent();
   }
   for (const b of document.querySelectorAll(".tabs button")) b.addEventListener("click", () => tab(b.dataset.tab));
+  // ── Agent tab: critic ledger + builder conversation (POST /agent runs `ms ask`, /critic runs `ms critic --run`)
+  let job = null; // { kind, lines } while the server runs one for this scene
+  async function loadAgent() {
+    if (!S.id) return;
+    const id = S.id;
+    const [a, rv] = await Promise.all([api(`/api/scenes/${id}/agent`).catch(() => ({ turns: [] })), api(`/api/scenes/${id}/review`).catch(() => ({ rounds: [] }))]);
+    if (id !== S.id) return;
+    job = a.job;
+    drawCritic(rv.rounds || []);
+    const when = t => new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    $("#turns").replaceChildren(...(a.turns || []).map(t => h("li", { class: "turn " + t.status },
+      h("div", { class: "q" }, t.request),
+      t.text ? h("div", { class: "a" }, t.text) : null,
+      h("div", { class: "by" }, `${t.by} · ${when(t.at)}${t.status === "running" ? (job ? " · working" : " · interrupted") : ""}`),
+      t.log && t.log.length ? h("details", {}, h("summary", {}, `${t.log.length} steps`), h("pre", {}, t.log.join("\n"))) : null)));
+    drawJob();
+  }
+  function drawCritic(rounds) {
+    const r = rounds.at(-1);
+    const v = $("#crit-verdict");
+    v.textContent = r ? `${r.verdict} · round ${r.round}` : "no rounds yet";
+    v.className = "verdict" + (r ? " " + r.verdict.toLowerCase() : "");
+    $("#crit-scores").replaceChildren(...(r ? Object.entries(r.scores).flatMap(([k, n]) => [
+      h("span", {}, k), h("span", { class: "bar-s" }, h("i", { class: (r.low || []).includes(k) ? "low" : "", style: `width:${n * 10}%` })),
+      h("span", { class: "n" }, n)]) : []));
+    // open items from every round first, then what the last round closed
+    const items = rounds.flatMap(x => x.issues).filter(i => i.status === "open")
+      .concat(rounds.flatMap(x => x.issues).filter(i => i.status !== "open").slice(-6));
+    $("#crit-issues").replaceChildren(...items.map(i => h("li", { class: `${i.severity} ${i.status}`, title: "Jump to this moment",
+      onclick: () => { if (S.playing) toggle(); seek(+i.t); } },
+      h("span", { class: "meta" }, `${i.id} · ${i.severity} · ${(+i.t).toFixed(2)}s${i.region ? " · " + i.region : ""}${i.status !== "open" ? " · " + i.status : ""}`),
+      i.problem, i.fix ? h("span", { class: "fix" }, "→ " + i.fix) : null)));
+  }
+  function drawJob() {
+    const busy = !!job;
+    $("#agent-dot").className = busy ? "on" : "";
+    $("#ask-stop").hidden = !busy;
+    $("#ask-send").disabled = $("#ask-notes").disabled = $("#run-critic").disabled = busy;
+    const log = $("#joblog");
+    log.hidden = !busy;
+    if (busy) {
+      log.textContent = (job.kind === "critic" ? "critic\n" : "builder\n") + job.lines.slice(-60).join("\n");
+      log.scrollTop = log.scrollHeight;
+    }
+  }
+  async function startJob(kind, body) {
+    try {
+      await api(`/api/scenes/${S.id}/${kind}`, { method: "POST", body });
+      job = { kind, lines: [] };
+      if (kind === "agent") { $("#ask-text").value = ""; setTimeout(loadAgent, 600); }
+      drawJob();
+    } catch (e) { toast(e.message, true); }
+  }
+  $("#ask-form").addEventListener("submit", e => {
+    e.preventDefault();
+    const prompt = $("#ask-text").value.trim();
+    if (!prompt) return $("#ask-text").focus();
+    startJob("agent", { prompt, fresh: $("#ask-fresh").checked });
+    $("#ask-fresh").checked = false;
+  });
+  $("#ask-text").addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) $("#ask-form").requestSubmit(); });
+  $("#ask-notes").addEventListener("click", () => startJob("agent", { prompt: "Work through every open note and open critic item, then reply to each note." }));
+  $("#run-critic").addEventListener("click", () => startJob("critic", {}));
+  $("#ask-stop").addEventListener("click", () => api(`/api/scenes/${S.id}/stop`, { method: "POST" }).catch(e => toast(e.message, true)));
+  function onJob(m) {
+    if (m.done) {
+      job = null;
+      const ok = m.code === 0, stopped = m.code === "stopped";
+      toast(ok ? (m.kind === "critic" ? "Critic finished" : "Agent finished") : stopped ? "Stopped" : `${m.kind} failed (exit ${m.code})`, !ok && !stopped);
+      loadAgent(); loadNotes();
+      return;
+    }
+    if (!job) job = { kind: m.kind, lines: [] };
+    job.lines.push(m.line);
+    if (!$("#panel-agent").hidden) drawJob(); else $("#agent-dot").className = "on";
+  }
+
   function setRate(r) {
     S.rate = r;
     for (const b of document.querySelectorAll("#rates button")) b.setAttribute("aria-pressed", +b.dataset.rate === r);
@@ -1081,6 +1190,8 @@
       if (m.type === "change") await loadScenes();
       if (!home.hidden) { if (m.type !== "files") loadProjects(); return; }
       if (m.scene !== S.id) return;
+      if (m.type === "job") return onJob(m);
+      if (m.type === "review") { if (!$("#panel-agent").hidden) loadAgent(); return; }
       live.classList.remove("flash"); void live.offsetWidth; live.classList.add("flash");
       if (m.type === "change") {
         await openScene(S.id, { t: S.t, playing: S.playing });

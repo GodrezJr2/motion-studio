@@ -24,6 +24,8 @@
 //                                   (agent: claude | codex | gemini | opencode; default MOTION.md builder.agent)
 //   ms notes <scene> [--all]        pinned notes (open only unless --all)
 //   ms reply <scene> <note> "text" [--resolve]
+//   ms ask <scene> "<request>" [--fresh]       hand one request (plus the open notes and critic items) to the builder
+//                                                agent; its session is resumed next time (.ms/agent.json)
 //   ms critic <scene> [--run] [--brief "..."]   packet for a fresh critic (.ms/critic/prompt.md); --run asks the critic agent
 //                                   ([--agent a] [--model m] [--effort e])
 //   ms critic <scene> --record <answer>          add a critic's answer (text with a ```json block) to the ledger
@@ -51,6 +53,7 @@ import { listTemplates, saveTemplate, fromTemplate, slotsOf, templatesDir } from
 import { pull, capture, search } from "../core/shelf.mjs";
 import { applyEdits } from "../core/edit.mjs";
 import { make } from "../core/make.mjs";
+import { ask } from "../core/ask.mjs";
 import { importComposition } from "../core/importer.mjs";
 import { packet, runCritic, parseVerdict, record, readReview } from "../core/critic.mjs";
 import { tokensFor } from "../core/tokens.mjs";
@@ -229,6 +232,14 @@ async function main() {
         rounds: flags.rounds != null ? +flags.rounds : undefined, render: !flags["no-render"], template: str(flags.template),
         model: str(flags.model), agent: str(flags.agent), criticAgent: str(flags["critic-agent"]), onLog: l => console.log(l) });
       console.log(`done  ${r.id}  ${r.verdict}${r.video ? `  ${rel(r.video)}` : ""}`);
+      break;
+    }
+    case "ask": {
+      const request = rest.join(" ").trim();
+      if (!request) throw new Error('usage: ms ask <scene> "<request>" [--fresh] [--agent a] [--model m]');
+      const t = await ask(need(scene), request, { agent: str(flags.agent), model: str(flags.model), effort: str(flags.effort),
+        fresh: !!flags.fresh, onLog: l => console.log(l) });
+      console.log("answer: " + t.text);
       break;
     }
     case "notes": {
