@@ -13,7 +13,8 @@ const TYPES = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
   ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp",
   ".woff2": "font/woff2", ".mp4": "video/mp4", ".map": "application/json", ".mp3": "audio/mpeg", ".wav": "audio/wav",
-  ".m4a": "audio/mp4", ".md": "text/markdown; charset=utf-8",
+  ".m4a": "audio/mp4", ".md": "text/markdown; charset=utf-8", ".gif": "image/gif", ".webm": "video/webm", ".mov": "video/quicktime",
+  ".ogg": "audio/ogg",
 };
 
 // URL prefix -> folder on disk
@@ -211,6 +212,8 @@ function sceneFiles(id) {
       if (d.isFile() && /\.(mp4|wav|png|json)$/i.test(d.name) && !/(\.video\.mp4|\.premix\.wav|^audio\.json|^sample\.json|^poster\.(png|json))$/.test(d.name)) add(path.join(".ms", d.name), "output");
     }
     if (fs.existsSync(path.join(ms, "refs"))) for (const f of fs.readdirSync(path.join(ms, "refs"))) add(path.join(".ms", "refs", f), "refs");
+    const ex = path.join(ms, "export");
+    if (fs.existsSync(ex)) for (const d of fs.readdirSync(ex, { withFileTypes: true })) if (d.isFile()) add(path.join(".ms", "export", d.name), "output");
   }
   return files;
 }
@@ -244,7 +247,9 @@ export function startServer({ port = 0, host = "127.0.0.1", watch = false } = {}
         if (req.method === "GET") return send(res, 200, notes);
         const b = await body(req);
         if (!nid) {
-          const note = { id: Date.now().toString(36), t: +(+b.t).toFixed(3), x: b.x, y: b.y, text: String(b.text || "").slice(0, 2000),
+          const draw = Array.isArray(b.draw) ? b.draw.slice(0, 200).filter(p => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite))
+            .map(([px, py]) => [+Math.min(100, Math.max(0, px)).toFixed(2), +Math.min(100, Math.max(0, py)).toFixed(2)]) : null;
+          const note = { id: Date.now().toString(36), t: +(+b.t).toFixed(3), x: b.x, y: b.y, ...(draw && draw.length > 1 ? { draw } : {}), text: String(b.text || "").slice(0, 2000),
             status: "open", created: new Date().toISOString(), replies: [] };
           notes.push(note);
           writeNotes(id, notes);
@@ -293,7 +298,7 @@ export function startServer({ port = 0, host = "127.0.0.1", watch = false } = {}
         newScene(String(b.id || ""), { format: b.format, kind: b.kind || undefined, title: b.title || undefined });
         return send(res, 201, { id: b.id });
       }
-      m = p.match(/^\/api\/scenes\/([^/]+)\/(audio|files|render|poster|duplicate|sounds|edit|undo|redo|agent|critic|stop)$/);
+      m = p.match(/^\/api\/scenes\/([^/]+)\/(audio|files|render|export|poster|duplicate|sounds|edit|undo|redo|agent|critic|stop)$/);
       if (m) {
         const [, id, what] = m;
         if (!validId(id)) return send(res, 404, { error: "no such scene" });
@@ -368,6 +373,17 @@ export function startServer({ port = 0, host = "127.0.0.1", watch = false } = {}
           });
           broadcast({ type: "files", scene: id });
           return send(res, 201, { name, size: fs.statSync(file).size });
+        }
+        if (what === "export" && req.method === "POST") {
+          const b = await body(req);
+          if (rendering.has(id)) return send(res, 409, { error: "already rendering" });
+          rendering.add(id);
+          try {
+            const { exportAs } = await import("./export.mjs");
+            const r = await exportAs(id, String(b.as || ""), { width: b.width && +b.width, fps: b.fps && +b.fps, at: b.at != null ? +b.at : undefined });
+            broadcast({ type: "files", scene: id });
+            return send(res, 200, { file: path.relative(path.join(SCENES, id), r.file).replace(/\\/g, "/"), size: r.size });
+          } catch (e) { return send(res, 400, { error: e.message }); } finally { rendering.delete(id); }
         }
         if (what === "render" && req.method === "POST") {
           if (rendering.has(id)) return send(res, 409, { error: "already rendering" });

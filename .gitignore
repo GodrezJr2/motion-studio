@@ -16,3 +16,5 @@ scenes/*
 media/
 # Your own recipes (moves and notes learned from references): local, never published
 recipes/
+sounds/bank/
+sounds/launch/

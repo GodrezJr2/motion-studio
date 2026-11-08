@@ -123,6 +123,10 @@ ripple mode (R) shifts them along instead. Ctrl+Z / Ctrl+Shift+Z undo and redo e
 memory, per scene); a scene.js changed outside the studio since then refuses the undo (409), so your own edits are
 never rolled back by it. Bars of preset moves (no source line) are read-only.
 The eye on a layer label hides it in the preview (Alt-click solos it); studio only, nothing is written.
+Drag an element on the stage to move it: the studio rewrites the `x` / `y` of the tween that places it at that
+moment (`ms edit` op `{ add: { x, y } }`; a literal or `"+=n"` shifts in place, a computed value is refused). Shift
+locks one axis; Ctrl+Z undoes it. In note mode a click pins a point and a drag draws a stroke saved with the note;
+`ms notes` and `ms ask` describe it in words ("a loop around x 40-62%, y 30-55%" or "a line from ... to ...").
 
 Reply in one or two sentences: what changed (ease, duration, offset, path) and the lint result. Resolve only when
 the note is addressed; if you disagree or need their eye, reply without `--resolve`.
@@ -326,6 +330,11 @@ The studio opens on a Projects home (posters, notes/lint/critic chips, hover pla
 `node bin/ms.mjs render <scene> [--fps 60] [--scale 1] [--encoder auto|nvenc|qsv|amf|cpu] [--workers N]` →
 `scenes/<scene>/.ms/<scene>.mp4`, frame-exact with the studio. Needs ffmpeg on PATH. Output, stills, sheets and
 reports go to `.ms/` (not source).
+
+`node bin/ms.mjs export <scene> gif|webm|prores|png|poster [--width W] [--fps N] [--at T]` → `.ms/export/`: GIF
+(two-pass palette) for chats and READMEs, WebM (VP9 + Opus) for the web, ProRes 422 HQ .mov for an editor, a PNG
+per frame, or one poster still. Renders first when the MP4 is missing or older than the scene. The Files tab has
+the same menu (the poster is taken at the playhead).
 
 GPU first, always. Headless Chrome already composites and draws WebGL on the GPU. The encoder is picked by
 `core/gpu.mjs`: NVIDIA NVENC, then Intel Quick Sync, then AMD AMF (each proven with a tiny test encode), libx264 on

@@ -24,12 +24,25 @@ function readNotes(id) {
   try { return JSON.parse(fs.readFileSync(path.join(sceneDir(id), "notes.json"), "utf8")); } catch { return []; }
 }
 
+// A stroke drawn with a note, in words an agent can act on: where it starts and ends, the box it covers, and
+// whether it closes on itself (a circle around something) or runs open (an arrow along a path)
+export function drawSummary(draw) {
+  if (!draw || draw.length < 2) return "";
+  const xs = draw.map(p => p[0]), ys = draw.map(p => p[1]);
+  const [a, b] = [draw[0], draw.at(-1)];
+  const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  const closed = Math.hypot(a[0] - b[0], a[1] - b[1]) < Math.max(4, span * 0.25);
+  const r = v => Math.round(v);
+  return closed ? `drawn: a loop around x ${r(Math.min(...xs))}-${r(Math.max(...xs))}%, y ${r(Math.min(...ys))}-${r(Math.max(...ys))}%`
+    : `drawn: a line from ${r(a[0])}%,${r(a[1])}% to ${r(b[0])}%,${r(b[1])}% (box x ${r(Math.min(...xs))}-${r(Math.max(...xs))}%, y ${r(Math.min(...ys))}-${r(Math.max(...ys))}%)`;
+}
+
 function prompt(id, request, first) {
   const notes = readNotes(id).filter(n => n.status === "open");
   const open = readReview(id).rounds.flatMap(r => r.issues).filter(i => i.status === "open");
   const ctx = [
     notes.length ? "Open notes from the user (time, point as % of the frame):\n" +
-      notes.map(n => `- [${n.id}] at ${n.t.toFixed(2)}s, ${Math.round(n.x)}%,${Math.round(n.y)}%: ${n.text}`).join("\n") : "No open notes.",
+      notes.map(n => `- [${n.id}] at ${n.t.toFixed(2)}s, ${Math.round(n.x)}%,${Math.round(n.y)}%${n.draw ? " (" + drawSummary(n.draw) + ")" : ""}: ${n.text}`).join("\n") : "No open notes.",
     open.length ? "Open critic items:\n" + open.map(i => `- [${i.id}] ${i.severity} at ${i.t}s ${i.region}: ${i.problem} (fix: ${i.fix})`).join("\n") : "",
   ].filter(Boolean).join("\n\n");
   const intro = first ? `You are the builder in Motion Studio, working from the studio repo (the working directory). Read AGENTS.md

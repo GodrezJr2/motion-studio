@@ -458,3 +458,8 @@ h2 .back:hover { color: var(--ink); }
 #agent-dot.on { display: inline-block; width: 6px; height: 6px; border-radius: 3px; background: var(--sig); vertical-align: middle; animation: pulse 1.2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .joblog::before, #agent-dot.on { animation: none; } }
 .lane.off .bar { opacity: .35; }
+
+/* Strokes drawn with a note: scale with the stage, constant line width */
+.ink { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.ink path { fill: none; stroke: var(--sig); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .45)); }
+.ink:not(.sel):not(.live) path { opacity: .75; }

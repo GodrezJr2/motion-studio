@@ -11,6 +11,8 @@
 //   ms frame <scene> <t> [--scale]  one still at time t (.ms/frame-<t>.png)
 //   ms render <scene> [--fps 60] [--blur 8] [--shutter 180] [--no-audio] [--encoder auto|nvenc|qsv|amf|cpu] [--workers 4]   MP4 from the same timeline, with
 //                                   the scene's sound (.ms/<scene>.mp4); GPU encoder first, libx264 as fallback
+//   ms export <scene> gif|webm|prores|png|poster [--width W] [--fps N] [--at T]   the MP4 in another format
+//                                   (.ms/export/), rendered first when missing or stale
 //   ms audio <scene>                cue sheet + mixed, loudness-normalised wav only (.ms/<scene>.wav)
 //   ms vo <scene>                   synthesise the voice-over lines; print each line's span and word timings
 //   ms tweens <scene>               the timeline as a table (#index, start, duration, ease, targets, source line)
@@ -53,7 +55,8 @@ import { listTemplates, saveTemplate, fromTemplate, slotsOf, templatesDir } from
 import { pull, capture, search } from "../core/shelf.mjs";
 import { applyEdits } from "../core/edit.mjs";
 import { make } from "../core/make.mjs";
-import { ask } from "../core/ask.mjs";
+import { exportAs, FORMATS } from "../core/export.mjs";
+import { ask, drawSummary } from "../core/ask.mjs";
 import { importComposition } from "../core/importer.mjs";
 import { packet, runCritic, parseVerdict, record, readReview } from "../core/critic.mjs";
 import { tokensFor } from "../core/tokens.mjs";
@@ -182,6 +185,13 @@ async function main() {
       if (r.audio) printAudio(r.audio);
       break;
     }
+    case "export": {
+      const as = rest[0];
+      if (!FORMATS.includes(as)) throw new Error(`usage: ms export <scene> ${FORMATS.join("|")} [--width W] [--fps N] [--at T]`);
+      const r = await exportAs(need(scene), as, { width: flags.width && +flags.width, fps: flags.fps && +flags.fps, at: flags.at != null ? +flags.at : undefined, onLog: m => console.log(m) });
+      console.log(`${rel(r.file)}  ${r.size}`);
+      break;
+    }
     case "audio": {
       const p = await withScene(need(scene), async ({ page, info }) => plan(scene, info, await page.evaluate(() => MS.tweens())));
       if (!p) { console.log("no audio in MS.register(tl, { audio: { music, sfx } })"); break; }
@@ -247,6 +257,7 @@ async function main() {
       if (!notes.length) console.log("no open notes");
       for (const n of notes) {
         console.log(`[${n.id}] ${n.status}  at ${n.t.toFixed(2)}s  point ${Math.round(n.x)}%,${Math.round(n.y)}%`);
+        if (n.draw) console.log(`   ${drawSummary(n.draw)}`);
         console.log(`   ${n.text}`);
         for (const r of n.replies) console.log(`   ${r.by}: ${r.text}`);
       }

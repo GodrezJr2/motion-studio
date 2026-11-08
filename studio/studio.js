@@ -123,6 +123,12 @@
     }
     S.notes.forEach((n, i) => {
       const far = Math.abs(n.t - S.t) > 0.25;
+      if (n.draw && (!far || S.selNote === n.id) && n.status !== "resolved") {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "ink" + (S.selNote === n.id ? " sel" : "")); svg.setAttribute("viewBox", "0 0 100 100"); svg.setAttribute("preserveAspectRatio", "none");
+        svg.innerHTML = `<path d="${inkPath(n.draw)}"/>`;
+        pins.append(svg);
+      }
       pins.append(h("div", {
         class: `pin${far ? " far" : ""}${n.status === "resolved" ? " resolved" : ""}${S.selNote === n.id ? " sel" : ""}`,
         style: `left:${n.x}%;top:${n.y}%`, title: n.text,
@@ -638,6 +644,78 @@
     document.querySelector(`.note[data-id="${id}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
+  // ── Drag on the stage: move an element and rewrite the x / y of the tween that places it at this moment.
+  // The tween is the one on that element animating x or y that is running now, else the last one that ended, else
+  // (for a .from) the next one: to/fromTo change their end values, a .from changes where it comes from. The preview
+  // moves with the CSS `translate` property, which composes with GSAP's transform without touching the timeline.
+  let sdrag = null;
+  function dragTarget(clientX, clientY) {
+    const doc = frame.contentDocument;
+    if (!doc || !MS) return null;
+    const r = stage.getBoundingClientRect();
+    let el = doc.elementFromPoint((clientX - r.left) / scale, (clientY - r.top) / scale);
+    const movers = S.tweens.filter(t => t.src && t.props.some(p => p === "x" || p === "y"));
+    for (; el && el !== doc.body; el = el.parentElement) {
+      const mine = movers.filter(t => t.targets.some(n => elementOf(n) === el));
+      if (!mine.length) continue;
+      const end = t => t.start + t.duration;
+      const now = mine.find(t => S.t >= t.start - 1e-4 && S.t <= end(t) + 1e-4 && !(t.from && S.t > t.start + 1e-4 && S.t < end(t) - 1e-4));
+      const before = mine.filter(t => end(t) <= S.t + 1e-4 && !t.from).sort((a, b) => end(b) - end(a))[0];
+      const nextFrom = mine.filter(t => t.from && t.start >= S.t - 1e-4).sort((a, b) => a.start - b.start)[0];
+      const tw = now || before || nextFrom;
+      if (tw) return { el, tw };
+    }
+    return null;
+  }
+  stage.addEventListener("pointerdown", e => {
+    if (S.pinning || e.button !== 0 || e.target.closest(".pin")) return;
+    const hit = dragTarget(e.clientX, e.clientY);
+    if (!hit) return;
+    if (hit.tw.from && S.t > hit.tw.start + 1e-4) {
+      toast("This element rests where its CSS puts it (a .from tween): move it in the stylesheet, or scrub to the tween's start to move where it comes from", true);
+      return;
+    }
+    if (S.playing) pause();
+    // scene px per local px of the element's parent (a camera scale in between changes how far x moves it)
+    const par = hit.el.parentElement;
+    const k = par && par.offsetWidth ? par.getBoundingClientRect().width / par.offsetWidth : 1;
+    sdrag = { ...hit, x0: e.clientX, y0: e.clientY, k, moved: false };
+    stage.setPointerCapture(e.pointerId);
+  });
+  stage.addEventListener("pointermove", e => {
+    if (!sdrag) return;
+    let dx = (e.clientX - sdrag.x0) / scale / sdrag.k, dy = (e.clientY - sdrag.y0) / scale / sdrag.k;
+    if (!sdrag.moved && Math.hypot(dx, dy) * scale < 3) return;
+    sdrag.moved = true;
+    if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; } // Shift: one axis
+    const has = p => sdrag.tw.props.includes(p);
+    sdrag.dx = has("x") ? Math.round(dx) : 0; sdrag.dy = has("y") ? Math.round(dy) : 0;
+    sdrag.el.style.translate = `${sdrag.dx}px ${sdrag.dy}px`;
+    showDragTip(e.clientX, e.clientY, `${sdrag.tw.id || sdrag.tw.src} · ${sdrag.tw.from ? "from" : "to"} x ${sdrag.dx >= 0 ? "+" : ""}${sdrag.dx} y ${sdrag.dy >= 0 ? "+" : ""}${sdrag.dy}`);
+  });
+  stage.addEventListener("pointerup", () => {
+    if (!sdrag) return;
+    const d = sdrag;
+    sdrag = null;
+    d.el.style.translate = "";
+    hideDragTip();
+    if (!d.moved || (!d.dx && !d.dy)) return;
+    const add = {};
+    if (d.dx) add.x = d.dx;
+    if (d.dy) add.y = d.dy;
+    document.body.classList.add("saving");
+    api(`/api/scenes/${S.id}/edit`, { method: "POST", body: { ops: [{ tween: d.tw.src, add }], tweens: S.tweens } })
+      .then(r => { setHist(r); toast(`Moved ${d.tw.id || d.tw.src} by ${d.dx}, ${d.dy}`); })
+      .catch(err => { document.body.classList.remove("saving"); toast(err.message, true); });
+  });
+  function showDragTip(cx, cy, text) {
+    let tip = $("#stage-tip");
+    if (!tip) { tip = h("div", { id: "stage-tip", class: "dragtip" }); document.body.append(tip); }
+    tip.textContent = text;
+    tip.style.cssText = `position:fixed;left:${cx + 14}px;top:${cy + 14}px;display:block`;
+  }
+  function hideDragTip() { const tip = $("#stage-tip"); if (tip) tip.style.display = "none"; }
+
   function startPin() {
     if (!MS) return;
     pause();
@@ -648,26 +726,57 @@
   }
   function endPin() {
     S.pinning = false;
+    stroke = null;
+    for (const el of document.querySelectorAll(".ink.live")) el.remove();
     stage.classList.remove("pinning");
     $("#pin-hint").hidden = true;
     $("#pop").hidden = true;
   }
-  let draft = null;
-  stage.addEventListener("click", e => {
-    if (!S.pinning) return;
-    const r = stage.getBoundingClientRect();
-    draft = { t: S.t, x: +((e.clientX - r.left) / r.width * 100).toFixed(2), y: +((e.clientY - r.top) / r.height * 100).toFixed(2) };
+  let draft = null, stroke = null;
+  // In pin mode a click pins a point; a drag draws a stroke (circle the thing, arrow the path) saved with the note
+  const pct = e => { const r = stage.getBoundingClientRect(); return [+((e.clientX - r.left) / r.width * 100).toFixed(2), +((e.clientY - r.top) / r.height * 100).toFixed(2)]; };
+  const inkPath = pts => pts.map((p, i) => (i ? "L" : "M") + p[0] + " " + p[1]).join("");
+  stage.addEventListener("pointerdown", e => {
+    if (!S.pinning || e.button !== 0 || e.target.closest(".pin")) return;
+    stroke = { pts: [pct(e)], el: null };
+    stage.setPointerCapture(e.pointerId);
+  });
+  stage.addEventListener("pointermove", e => {
+    if (!stroke) return;
+    const p = pct(e), last = stroke.pts.at(-1);
+    if (Math.hypot(p[0] - last[0], p[1] - last[1]) < 0.4) return;
+    stroke.pts.push(p);
+    if (!stroke.el) {
+      stroke.el = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      stroke.el.setAttribute("class", "ink live"); stroke.el.setAttribute("viewBox", "0 0 100 100"); stroke.el.setAttribute("preserveAspectRatio", "none");
+      stroke.el.innerHTML = "<path/>";
+      $("#pins").append(stroke.el);
+    }
+    stroke.el.firstChild.setAttribute("d", inkPath(stroke.pts));
+  });
+  stage.addEventListener("pointerup", e => {
+    if (!stroke) return;
+    const pts = stroke.pts;
+    stroke = null;
+    const spread = Math.max(...pts.map(p => Math.hypot(p[0] - pts[0][0], p[1] - pts[0][1])));
+    // thin the stroke to at most 64 points: enough to read a circle or an arrow
+    const step = Math.max(1, Math.ceil(pts.length / 64));
+    const draw = spread > 1.5 ? pts.filter((_, i) => i % step === 0 || i === pts.length - 1) : null;
+    openDraft(e, { t: S.t, x: pts[0][0], y: pts[0][1], ...(draw ? { draw } : {}) });
+  });
+  function openDraft(e, d) {
+    draft = d;
     const w = well.getBoundingClientRect();
     const pop = $("#pop");
     pop.hidden = false;
     pop.style.left = Math.min(e.clientX - w.left + 14, w.width - 316) + "px";
     pop.style.top = Math.min(e.clientY - w.top + 14, w.height - 130) + "px";
-    $("#pop-at").textContent = `Note at ${S.t.toFixed(2)}s`;
+    $("#pop-at").textContent = `Note at ${S.t.toFixed(2)}s${d.draw ? " · with drawing" : ""}`;
     $("#pin-hint").hidden = true;
     const ta = $("#pop-text");
     ta.value = "";
     ta.focus();
-  });
+  }
   $("#pop-text").addEventListener("keydown", async e => {
     if (e.key === "Escape") { e.preventDefault(); endPin(); }
     if (e.key === "Enter" && !e.shiftKey) {
@@ -912,6 +1021,23 @@
   });
 
   // ── projects home ─────────────────────────────────────────
+  $("#export").addEventListener("change", async e => {
+    const sel = e.target, as = sel.value;
+    if (!as) return;
+    sel.disabled = true;
+    sel.options[0].textContent = "Exporting…";
+    sel.value = "";
+    try {
+      const r = await api(`/api/scenes/${S.id}/export`, { method: "POST", body: { as, ...(as === "poster" ? { at: +S.t.toFixed(3) } : {}) } });
+      await loadFiles();
+      const f = S.files.find(x => x.name === r.file);
+      if (f && as !== "png") view(f);
+      toast(`Exported ${r.file} (${r.size})`);
+    } catch (err) { toast("Export failed: " + err.message, true); }
+    sel.disabled = false;
+    sel.options[0].textContent = "Export…";
+  });
+
   // Every scene as a card: a still near the end, format, length, where it stands (open notes, lint, critic, render).
   // Hovering a rendered project plays its MP4. Stills are taken by the server, one at a time, when missing or stale.
   const home = $("#home");

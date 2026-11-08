@@ -65,6 +65,14 @@
       <div class="file-acts">
         <button class="btn" id="upload">Upload</button>
         <button class="btn" id="render">Render MP4</button>
+        <select class="btn" id="export" title="Export the render in another format (renders first if stale)">
+          <option value="">Export…</option>
+          <option value="gif">GIF</option>
+          <option value="webm">WebM (web)</option>
+          <option value="prores">ProRes .mov (editor)</option>
+          <option value="poster">Poster still (at playhead)</option>
+          <option value="png">PNG sequence</option>
+        </select>
         <input type="file" id="upload-input" multiple hidden>
       </div>
       <p class="drop mute" id="drop">Drop music, logos or footage here. They land in the scene folder; tell the AI how to use them in a note.</p>

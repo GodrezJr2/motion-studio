@@ -55,6 +55,21 @@ function opSplices(src, call, tw, op) {
     else if (varsArg.properties.length) out.push([varsArg.properties.at(-1).end, varsArg.properties.at(-1).end, `, ${key}: ${value}`]);
     else out.push([varsArg.start, varsArg.end, `{ ${key}: ${value} }`]);
   };
+  // { add: { x: 40, y: -12 } }: move a value in this call's vars (the end state of to/fromTo, the start state of from),
+  // as dragged on the stage. Numbers and "+=n" / "-=n" strings shift in place; anything computed is refused.
+  if (op.add) for (const [key, d] of Object.entries(op.add)) {
+    if (!d) continue;
+    const p = varsArg.properties.find(q => q.type === "Property" && keyName(q) === key);
+    if (!p) throw new Error(`${tw.src}: this tween does not set ${key}`);
+    const v = p.value;
+    if (v.type === "Literal" && typeof v.value === "number") out.push([v.start, v.end, num(v.value + d)]);
+    else if (v.type === "UnaryExpression" && v.operator === "-" && v.argument.type === "Literal" && typeof v.argument.value === "number")
+      out.push([v.start, v.end, num(-v.argument.value + d)]);
+    else if (v.type === "Literal" && typeof v.value === "string" && /^[+-]=-?[\d.]+$/.test(v.value)) {
+      const n = (v.value[0] === "-" ? -1 : 1) * parseFloat(v.value.slice(2)) + d;
+      out.push([v.start, v.end, lit((n < 0 ? "-=" : "+=") + +Math.abs(n).toFixed(2))]);
+    } else throw new Error(`${tw.src}: ${key} is computed (${src.slice(v.start, v.end).slice(0, 40)}); edit it in code`);
+  }
   if (op.dur != null) setProp("duration", num(op.dur));
   if (op.ease != null) setProp("ease", lit(op.ease));
   if (op.stagger != null) setProp("stagger", num(op.stagger));
